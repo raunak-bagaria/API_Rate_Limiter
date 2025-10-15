@@ -1,0 +1,101 @@
+IP-Based Client Identification with CIDR Documentation
+
+Overview
+This feature provides IP-based client identification using CIDR (Classless Inter-Domain Routing) notation. Clients are identified by matching their IP addresses against configured CIDR ranges. Both IPv4 and IPv6 addresses are supported.
+
+How IP Identification Works
+Each client is assigned one or more CIDR ranges, stored in src/ip_clients.csv.
+The client's IP address is extracted from the incoming HTTP request.
+The server validates the IP address using the IPManager class (see src/ip_manager.py).
+The IP is matched against all configured CIDR ranges for all clients.
+If a match is found, the client receives a response with their classification; otherwise, an error is returned.
+
+Request Format
+Endpoint: /ip-data
+Method: GET
+The client's IP address is automatically extracted from the request.
+
+Example cURL Request (local testing):
+curl http://127.0.0.1:5000/ip-data
+
+Example with specific IP (for testing with X-Forwarded-For):
+curl -H "X-Forwarded-For: 192.168.1.50" http://127.0.0.1:5000/ip-data
+
+CIDR Range Format
+CIDR ranges follow standard notation: IP_ADDRESS/PREFIX_LENGTH
+IPv4 examples:
+  - Single IP: 192.168.1.10/32
+  - Subnet: 192.168.1.0/24 (covers 192.168.1.0 - 192.168.1.255)
+  - Large range: 10.0.0.0/16 (covers 10.0.0.0 - 10.0.255.255)
+
+IPv6 examples:
+  - Subnet: 2001:db8::/32
+  - Specific range: 2001:db8:1234::/48
+
+Multiple CIDR ranges per client are separated by commas in the CSV file.
+
+CSV File Structure
+The ip_clients.csv file must have the following headers:
+- client_name: Name of the client organization
+- classification: Client tier (e.g., premium, standard, basic)
+- cidr_ranges: Comma-separated list of CIDR ranges
+
+Example:
+client_name,classification,cidr_ranges
+Corporate HQ,premium,"192.168.1.0/24,10.0.0.0/16"
+Branch Office,standard,172.16.0.0/20
+IPv6 Client,premium,2001:db8::/32
+
+Response Format
+Success:
+{
+  "message": "Welcome <client_name>",
+  "classification": "<classification>",
+  "matched_cidr": "<cidr_range>",
+  "client_ip": "<ip_address>"
+}
+
+Error (IP not authorized):
+{
+  "error": { "message": "IP address not authorized" }
+}
+
+Error (Invalid IP format):
+{
+  "error": { "message": "Invalid IP address format" }
+}
+
+Technical Details
+
+IPv4 and IPv6 Support
+- The system uses Python's ipaddress module for robust IP handling
+- Both IPv4 and IPv6 addresses are automatically detected and validated
+- CIDR ranges can mix IPv4 and IPv6 for the same client
+
+CIDR Matching Logic
+- IP addresses are matched using subnet membership testing
+- The first matching CIDR range determines the client
+- If multiple clients could match, the first match in the CSV file wins
+
+Performance Considerations
+- All CIDR ranges are pre-parsed at startup for fast matching
+- IP matching is O(n*m) where n=number of clients, m=avg CIDR ranges per client
+- For high-traffic scenarios, consider caching results or optimizing the lookup
+
+Developer Notes
+
+Logging:
+- Logging is configured in app.py only. Do not configure logging in ip_manager.py.
+- IP addresses may be logged for security auditing purposes.
+- Logs are written to both the console and a rotating file (api.log).
+
+Updating Clients:
+- To add or remove clients, update ip_clients.csv.
+- After updating, restart the server or call ip_manager.reload_clients().
+- Ensure the CSV headers are correct and all required fields are present.
+- Invalid CIDR ranges will be logged as warnings and skipped.
+
+Error Handling:
+- All error responses follow the format { "error": { "message": str } }.
+- All success responses include message, classification, matched_cidr, and client_ip fields.
+- Invalid CIDR ranges in the CSV are logged
