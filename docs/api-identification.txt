@@ -1,0 +1,56 @@
+API Identification & Usage Documentation
+
+Overview
+This API provides a simple rate-limited endpoint that requires client identification via an API key. API keys and client information are managed using a CSV file (clients.csv).
+
+How API Key Identification Works
+Each client is assigned a unique API key, stored in src/clients.csv.
+The API key must be sent in the HTTP request header as x-api-key.
+The server validates the API key using the APIKeyManager class (see src/api_key_manager.py).
+If the key is valid, the client receives a personalized response; otherwise, an error is returned.
+Request Format
+Endpoint: /data
+Method: GET
+Header: x-api-key: <your-api-key>
+Example cURL Request:
+curl -H "x-api-key: 12345-ABCDE" http://127.0.0.1:5000/data
+
+API Key Format
+API keys are alphanumeric strings (e.g., 12345-ABCDE).
+All valid keys are listed in clients.csv under the api_key column.
+The CSV must have the following headers: api_key,client_name,classification.
+Response Format
+Success:
+{
+"message": "Welcome <client_name>",
+"classification": "<classification>"
+}
+
+Error:
+{
+"error": { "message": "<error message>" }
+}
+
+Developer Notes
+Logging:
+Logging is configured in app.py only. Do not configure logging in api_key_manager.py or other modules.
+API keys and sensitive data must never be logged.
+Logs are written to both the console and a rotating file (api.log).
+Updating Clients:
+To add or remove clients, update clients.csv.
+After updating, restart the server or call key_manager.reload_clients() if implemented.
+Ensure the CSV headers are correct and all required fields are present.
+Error Handling:
+All error responses follow the format { "error": { "message": str } }.
+All success responses include message and classification fields.
+Security:
+Never expose or log API keys.
+Only valid API keys listed in clients.csv will be accepted.
+Extending Functionality:
+To add new endpoints, follow the same pattern as /data in app.py.
+For rate limiting or other features, extend the logic in app.py and/or api_key_manager.py.
+File Structure Reference
+src/app.py — Main Flask application, logging configuration, and endpoint definitions.
+src/api_key_manager.py — API key validation logic, CSV file reading, and client management.
+src/clients.csv — List of valid API keys and client metadata.
+docs/api-identification.txt — This documentation file.
