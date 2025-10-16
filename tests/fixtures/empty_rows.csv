@@ -1,0 +1,4 @@
+api_key,client_name,classification
+test-key,Test Client,free
+
+another-key,Another Client,premium
