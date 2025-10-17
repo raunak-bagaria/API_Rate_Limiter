@@ -64,7 +64,7 @@ class APIKeyManager {
         }
 
         if (this.clients.has(apiKey)) {
-          console.warn(`Duplicate API key found in clients.csv, keeping first occurrence`);
+          console.warn('Duplicate API key found in clients.csv, keeping first occurrence');
           continue;
         }
 

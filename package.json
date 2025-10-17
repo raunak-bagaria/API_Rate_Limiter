@@ -1,0 +1,40 @@
+{
+  "name": "pesu_rr_cse_h_p73_api_rate_limiter_codevengers",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "**Project ID:** P73   **Course:** UE23CS341A   **Academic Year:** 2025   **Semester:** 5th Sem   **Campus:** RR   **Branch:** CSE   **Section:** H   **Team:** Codevengers",
+  "main": "src/app.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "lint": "eslint src/**/*.js tests/**/*.js",
+    "lint:fix": "eslint src/**/*.js tests/**/*.js --fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pestechnology/PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers.git"
+  },
+  "keywords": ["api", "rate-limiter", "client-identification", "middleware"],
+  "author": "Codevengers",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pestechnology/PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers/issues"
+  },
+  "homepage": "https://github.com/pestechnology/PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers#readme",
+  "dependencies": {
+    "csv-parse": "^6.1.0",
+    "csv-stringify": "^6.6.0",
+    "express": "^5.1.0",
+    "ip-cidr": "^4.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0"
+  }
+}
