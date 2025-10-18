@@ -21,6 +21,7 @@
 
 import express from 'express';
 import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
+import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,8 +37,48 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier
+// Extract client IP helper function
+function extractClientIP(req) {
+  // Check X-Forwarded-For header (for proxy/load balancer scenarios)
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    // Take the first IP if multiple are present
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  // Fall back to direct connection IP
+  return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
+}
+
+// IP allowlist/blocklist middleware - runs before all other endpoints
+app.use((req, res, next) => {
+  const clientIP = extractClientIP(req);
+  const ipCheck = ipAllowBlockManager.checkIP(clientIP);
+  
+  console.log(`IP Check for ${clientIP}: ${ipCheck.action} - ${ipCheck.reason}`);
+  
+  if (ipCheck.action === IPListAction.BLOCK) {
+    console.log(`🚫 Blocked request from ${clientIP}: ${ipCheck.reason}`);
+    return res.status(403).json({
+      error: {
+        message: 'Access denied',
+        reason: 'IP address is blocklisted',
+        clientIP: clientIP
+      }
+    });
+  }
+  
+  // For allowlisted IPs, log the special status but continue processing
+  if (ipCheck.action === IPListAction.ALLOW) {
+    console.log(`✅ Allowlisted IP ${clientIP} - processing according to rules`);
+  }
+  
+  next();
+});
+
+// Initialize unified client identifier and IP allow/block manager
 const clientIdentifier = new ClientIdentifier();
+const ipAllowBlockManager = new IPAllowBlockManager();
 
 /**
  * Main data endpoint
@@ -137,12 +178,15 @@ app.get('/premium-only', (req, res) => {
 app.post('/admin/reload', (req, res) => {
   try {
     clientIdentifier.reloadAll();
+    ipAllowBlockManager.reloadAll();
     const stats = clientIdentifier.getStatistics();
+    const ipListStats = ipAllowBlockManager.getStatistics();
 
     console.log('✓ Configurations reloaded successfully');
     res.json({
       message: 'Configurations reloaded successfully',
-      statistics: stats
+      statistics: stats,
+      ipLists: ipListStats
     });
   } catch (error) {
     console.error(`Error reloading: ${error.message}`);
@@ -159,11 +203,153 @@ app.post('/admin/reload', (req, res) => {
 app.get('/admin/stats', (req, res) => {
   try {
     const stats = clientIdentifier.getStatistics();
-    res.json(stats);
+    const ipListStats = ipAllowBlockManager.getStatistics();
+    res.json({
+      ...stats,
+      ipLists: ipListStats
+    });
   } catch (error) {
     console.error(`Error retrieving stats: ${error.message}`);
     res.status(500).json({
       error: { message: `Failed to retrieve stats: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to add IP to allowlist
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/allowlist/add', (req, res) => {
+  try {
+    const { ip_or_cidr, description } = req.body;
+    
+    if (!ip_or_cidr) {
+      return res.status(400).json({
+        error: { message: 'ip_or_cidr is required' }
+      });
+    }
+    
+    const success = ipAllowBlockManager.addToAllowlist(ip_or_cidr, description || '');
+    
+    if (success) {
+      res.json({
+        message: `Added ${ip_or_cidr} to allowlist`,
+        ip_or_cidr: ip_or_cidr,
+        description: description
+      });
+    } else {
+      res.status(400).json({
+        error: { message: `Failed to add ${ip_or_cidr} to allowlist` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error adding to allowlist: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to add to allowlist: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to add IP to blocklist
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/blocklist/add', (req, res) => {
+  try {
+    const { ip_or_cidr, description } = req.body;
+    
+    if (!ip_or_cidr) {
+      return res.status(400).json({
+        error: { message: 'ip_or_cidr is required' }
+      });
+    }
+    
+    const success = ipAllowBlockManager.addToBlocklist(ip_or_cidr, description || '');
+    
+    if (success) {
+      res.json({
+        message: `Added ${ip_or_cidr} to blocklist`,
+        ip_or_cidr: ip_or_cidr,
+        description: description
+      });
+    } else {
+      res.status(400).json({
+        error: { message: `Failed to add ${ip_or_cidr} to blocklist` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error adding to blocklist: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to add to blocklist: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to remove IP from allowlist
+ * In production, protect this with admin authentication
+ */
+app.delete('/admin/allowlist/remove', (req, res) => {
+  try {
+    const { ip_or_cidr } = req.body;
+    
+    if (!ip_or_cidr) {
+      return res.status(400).json({
+        error: { message: 'ip_or_cidr is required' }
+      });
+    }
+    
+    const success = ipAllowBlockManager.removeFromAllowlist(ip_or_cidr);
+    
+    if (success) {
+      res.json({
+        message: `Removed ${ip_or_cidr} from allowlist`,
+        ip_or_cidr: ip_or_cidr
+      });
+    } else {
+      res.status(404).json({
+        error: { message: `${ip_or_cidr} not found in allowlist` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error removing from allowlist: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to remove from allowlist: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to remove IP from blocklist
+ * In production, protect this with admin authentication
+ */
+app.delete('/admin/blocklist/remove', (req, res) => {
+  try {
+    const { ip_or_cidr } = req.body;
+    
+    if (!ip_or_cidr) {
+      return res.status(400).json({
+        error: { message: 'ip_or_cidr is required' }
+      });
+    }
+    
+    const success = ipAllowBlockManager.removeFromBlocklist(ip_or_cidr);
+    
+    if (success) {
+      res.json({
+        message: `Removed ${ip_or_cidr} from blocklist`,
+        ip_or_cidr: ip_or_cidr
+      });
+    } else {
+      res.status(404).json({
+        error: { message: `${ip_or_cidr} not found in blocklist` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error removing from blocklist: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to remove from blocklist: ${error.message}` }
     });
   }
 });
@@ -196,11 +382,14 @@ app.use((req, res) => {
 // Start server
 app.listen(PORT, () => {
   const stats = clientIdentifier.getStatistics();
+  const ipListStats = ipAllowBlockManager.getStatistics();
   console.log('='.repeat(60));
   console.log('API Rate Limiter Starting');
   console.log(`API Key Clients: ${stats.apiKeyClients}`);
   console.log(`CIDR Ranges: ${stats.cidr.totalRanges} (${stats.cidr.totalRequests} requests)`);
   console.log(`Learned IPs: ${stats.learnedIPs.totalIPs} (${stats.learnedIPs.totalRequests} requests)`);
+  console.log(`IP Allowlist: ${ipListStats.allowlist.totalEntries} entries (${ipListStats.allowlist.totalRequests} requests)`);
+  console.log(`IP Blocklist: ${ipListStats.blocklist.totalEntries} entries (${ipListStats.blocklist.totalRequests} requests)`);
   console.log(`Server running on port ${PORT}`);
   console.log('='.repeat(60));
 });
