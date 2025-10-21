@@ -22,6 +22,7 @@
 import express from 'express';
 import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
 import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
+import RateLimiter from './rateLimiter.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,13 +77,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier and IP allow/block manager
+// Initialize unified client identifier, IP allow/block manager, and rate limiter
 const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
+const rateLimiter = new RateLimiter();
 
 /**
  * Main data endpoint
  * Requires API key in X-API-Key header
+ * Enforces rate limits per client
  */
 app.get('/data', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
@@ -91,6 +94,29 @@ app.get('/data', (req, res) => {
     console.log(`Unauthorized request from ${req.ip}: ${identity.error.message}`);
     return res.status(401).json(identity.toJSON());
   }
+
+  // Check rate limits
+  const rateLimitResult = rateLimiter.checkRequest(identity.clientName, identity.classification);
+
+  if (!rateLimitResult.allowed) {
+    console.log(
+      `⚠️  Rate limit exceeded for ${identity.clientName} (${identity.classification}) - ` +
+      `${rateLimitResult.limitingWindow} window`
+    );
+    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    return res.status(429).json({
+      error: {
+        message: rateLimitResult.message,
+        limitingWindow: rateLimitResult.limitingWindow,
+        retryAfter: rateLimitResult.retryAfter,
+        windows: rateLimitResult.windows
+      }
+    });
+  }
+
+  // Record the request
+  rateLimiter.recordRequest(identity.clientName, identity.classification);
 
   console.log(
     `✓ Request from ${identity.clientName} (${identity.classification}) ` +
@@ -107,6 +133,7 @@ app.get('/data', (req, res) => {
 /**
  * Tier-based information endpoint
  * Returns features available based on client tier
+ * Enforces rate limits per client
  */
 app.get('/tier-info', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
@@ -114,6 +141,29 @@ app.get('/tier-info', (req, res) => {
   if (!identity.valid) {
     return res.status(401).json(identity.toJSON());
   }
+
+  // Check rate limits
+  const rateLimitResult = rateLimiter.checkRequest(identity.clientName, identity.classification);
+
+  if (!rateLimitResult.allowed) {
+    console.log(
+      `⚠️  Rate limit exceeded for ${identity.clientName} (${identity.classification}) - ` +
+      `${rateLimitResult.limitingWindow} window`
+    );
+    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    return res.status(429).json({
+      error: {
+        message: rateLimitResult.message,
+        limitingWindow: rateLimitResult.limitingWindow,
+        retryAfter: rateLimitResult.retryAfter,
+        windows: rateLimitResult.windows
+      }
+    });
+  }
+
+  // Record the request
+  rateLimiter.recordRequest(identity.clientName, identity.classification);
 
   const tierInfo = {
     clientName: identity.clientName,
@@ -141,6 +191,7 @@ app.get('/tier-info', (req, res) => {
 /**
  * Premium-only endpoint
  * Requires premium or enterprise tier
+ * Enforces rate limits per client
  */
 app.get('/premium-only', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
@@ -162,6 +213,29 @@ app.get('/premium-only', (req, res) => {
       }
     });
   }
+
+  // Check rate limits
+  const rateLimitResult = rateLimiter.checkRequest(identity.clientName, identity.classification);
+
+  if (!rateLimitResult.allowed) {
+    console.log(
+      `⚠️  Rate limit exceeded for ${identity.clientName} (${identity.classification}) - ` +
+      `${rateLimitResult.limitingWindow} window`
+    );
+    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    return res.status(429).json({
+      error: {
+        message: rateLimitResult.message,
+        limitingWindow: rateLimitResult.limitingWindow,
+        retryAfter: rateLimitResult.retryAfter,
+        windows: rateLimitResult.windows
+      }
+    });
+  }
+
+  // Record the request
+  rateLimiter.recordRequest(identity.clientName, identity.classification);
 
   console.log(`Premium endpoint accessed by ${identity.clientName}`);
   res.json({
@@ -204,9 +278,11 @@ app.get('/admin/stats', (req, res) => {
   try {
     const stats = clientIdentifier.getStatistics();
     const ipListStats = ipAllowBlockManager.getStatistics();
+    const rateLimitStats = rateLimiter.getAllStatistics();
     res.json({
       ...stats,
-      ipLists: ipListStats
+      ipLists: ipListStats,
+      rateLimits: rateLimitStats
     });
   } catch (error) {
     console.error(`Error retrieving stats: ${error.message}`);
@@ -350,6 +426,121 @@ app.delete('/admin/blocklist/remove', (req, res) => {
     console.error(`Error removing from blocklist: ${error.message}`);
     res.status(500).json({
       error: { message: `Failed to remove from blocklist: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get rate limit statistics for a specific client
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/rate-limits/:clientName', (req, res) => {
+  try {
+    const { clientName } = req.params;
+    const stats = rateLimiter.getClientStatistics(clientName);
+    
+    if (!stats) {
+      return res.status(404).json({
+        error: { message: `No rate limit data found for client: ${clientName}` }
+      });
+    }
+    
+    res.json(stats);
+  } catch (error) {
+    console.error(`Error retrieving rate limit stats: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve rate limit stats: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to reset rate limits for a specific client
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/rate-limits/:clientName/reset', (req, res) => {
+  try {
+    const { clientName } = req.params;
+    rateLimiter.resetClient(clientName);
+    
+    res.json({
+      message: `Rate limits reset for client: ${clientName}`,
+      clientName: clientName
+    });
+  } catch (error) {
+    console.error(`Error resetting rate limits: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to reset rate limits: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to update rate limits for a tier
+ * In production, protect this with admin authentication
+ */
+app.put('/admin/rate-limits/tier/:tier', (req, res) => {
+  try {
+    const { tier } = req.params;
+    const { second, minute, hour, day } = req.body;
+    
+    if (!second && !minute && !hour && !day) {
+      return res.status(400).json({
+        error: { message: 'At least one time window limit is required (second, minute, hour, day)' }
+      });
+    }
+    
+    const limits = {};
+    if (second !== undefined) limits.second = parseInt(second);
+    if (minute !== undefined) limits.minute = parseInt(minute);
+    if (hour !== undefined) limits.hour = parseInt(hour);
+    if (day !== undefined) limits.day = parseInt(day);
+    
+    const success = rateLimiter.updateTierLimits(tier, limits);
+    
+    if (success) {
+      const updatedLimits = rateLimiter.getTierLimits(tier);
+      res.json({
+        message: `Updated rate limits for tier: ${tier}`,
+        tier: tier,
+        limits: updatedLimits
+      });
+    } else {
+      res.status(404).json({
+        error: { message: `Unknown tier: ${tier}` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error updating tier limits: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to update tier limits: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get rate limits for a tier
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/rate-limits/tier/:tier', (req, res) => {
+  try {
+    const { tier } = req.params;
+    const limits = rateLimiter.getTierLimits(tier);
+    
+    if (!limits) {
+      return res.status(404).json({
+        error: { message: `Unknown tier: ${tier}` }
+      });
+    }
+    
+    res.json({
+      tier: tier,
+      limits: limits
+    });
+  } catch (error) {
+    console.error(`Error retrieving tier limits: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve tier limits: ${error.message}` }
     });
   }
 });
