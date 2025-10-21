@@ -247,7 +247,12 @@ class RateLimiter {
    * @param {number} options.inactiveThreshold - Time in ms to consider client inactive (default: 10 minutes)
    */
   constructor(rateLimits = DEFAULT_RATE_LIMITS, options = {}) {
-    this.rateLimits = rateLimits;
+    // Deep copy rateLimits to avoid mutating the original DEFAULT_RATE_LIMITS
+    this.rateLimits = {};
+    for (const tier in rateLimits) {
+      this.rateLimits[tier] = { ...rateLimits[tier] };
+    }
+    
     // Map<clientName, ClientRateLimiter>
     this.clients = new Map();
     
