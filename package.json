@@ -19,7 +19,12 @@
     "type": "git",
     "url": "git+https://github.com/pestechnology/PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers.git"
   },
-  "keywords": ["api", "rate-limiter", "client-identification", "middleware"],
+  "keywords": [
+    "api",
+    "rate-limiter",
+    "client-identification",
+    "middleware"
+  ],
   "author": "Codevengers",
   "license": "ISC",
   "bugs": {
@@ -35,6 +40,7 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "eslint": "^8.57.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "node-fetch": "^3.3.2"
   }
 }
