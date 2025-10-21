@@ -1,0 +1,4 @@
+id,endpoint,api_key,ip_or_cidr,tier,limit,window
+1,/data,12345-ABCDE,,premium,100,60
+2,/tier-info,,,free,10,60
+3,/premium-only,,192.168.1.0/24,,50,60
