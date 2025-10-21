@@ -11,6 +11,7 @@
 
 import APIKeyManager from './apiKeyManager.js';
 import IPManager from './ipManager.js';
+import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 
 /**
  * Client service tier classifications
@@ -86,14 +87,19 @@ class ClientIdentifier {
    * @param {string} options.apiKeyFile - Path to API key CSV file
    * @param {string} options.cidrFile - Path to CIDR ranges CSV file
    * @param {string} options.learnedIpsFile - Path to learned IPs CSV file
+   * @param {string} options.allowlistFile - Path to IP allowlist CSV file
+   * @param {string} options.blocklistFile - Path to IP blocklist CSV file
    */
   constructor(options = {}) {
     const apiKeyFile = options.apiKeyFile || 'clients.csv';
     const cidrFile = options.cidrFile || 'client_cidr.csv';
     const learnedIpsFile = options.learnedIpsFile || 'client_ips.csv';
+    const allowlistFile = options.allowlistFile || 'ip_allowlist.csv';
+    const blocklistFile = options.blocklistFile || 'ip_blocklist.csv';
 
     this.apiKeyManager = new APIKeyManager(apiKeyFile);
     this.ipManager = new IPManager(cidrFile, learnedIpsFile);
+    this.ipAllowBlockManager = new IPAllowBlockManager(allowlistFile, blocklistFile);
 
     console.info(
       `ClientIdentifier initialized with ${this.apiKeyManager.getClientCount()} API key clients`
@@ -106,7 +112,11 @@ class ClientIdentifier {
    * Workflow:
    * 1. Extract API key from X-API-Key header (REQUIRED)
    * 2. Validate API key to get client name and classification
-   * 3. Extract client IP and process through IPManager
+   * 3. Extract client IP and check allowlist/blocklist status
+   * 4. Process IP through IPManager for learning/tracking
+   * 
+   * Note: IP blocklist checking should be done at middleware level,
+   * but we also check here for completeness and metadata
    * 
    * @param {Object} req - Express request object
    * @returns {ClientIdentity} Object containing identification results
@@ -132,19 +142,38 @@ class ClientIdentifier {
       });
     }
 
-    // Step 3: Extract and process client IP
+    // Step 3: Extract and check client IP
     const clientIP = this._extractClientIP(req);
+    let ipStatus = { action: IPListAction.NONE, reason: 'Not checked' };
+    
     if (clientIP) {
+      // Check IP allowlist/blocklist status
+      ipStatus = this.ipAllowBlockManager.checkIP(clientIP);
+      
+      // If IP is blocklisted, return error (though this should be caught by middleware)
+      if (ipStatus.action === IPListAction.BLOCK) {
+        return new ClientIdentity({
+          valid: false,
+          error: { 
+            message: 'Access denied: IP address is blocklisted',
+            ipAddress: clientIP
+          }
+        });
+      }
+      
+      // Process IP through normal learning/tracking
       this.ipManager.processIP(result.clientName, clientIP);
     }
 
-    // Return successful identification
+    // Return successful identification with IP list status
     return new ClientIdentity({
       valid: true,
       clientName: result.clientName,
       classification: result.classification,
       metadata: {
-        clientIP: clientIP
+        clientIP: clientIP,
+        ipListStatus: ipStatus.action,
+        ipListReason: ipStatus.reason
       }
     });
   }
@@ -174,6 +203,7 @@ class ClientIdentifier {
   reloadAll() {
     this.apiKeyManager.reloadClients();
     this.ipManager.reloadAll();
+    this.ipAllowBlockManager.reloadAll();
     console.info('All client configurations reloaded');
   }
 
@@ -183,11 +213,13 @@ class ClientIdentifier {
    */
   getStatistics() {
     const ipStats = this.ipManager.getStatistics();
+    const ipListStats = this.ipAllowBlockManager.getStatistics();
     
     return {
       apiKeyClients: this.apiKeyManager.getClientCount(),
       cidr: ipStats.cidr,
-      learnedIPs: ipStats.learned
+      learnedIPs: ipStats.learned,
+      ipLists: ipListStats
     };
   }
 }
