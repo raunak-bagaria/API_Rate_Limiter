@@ -10,16 +10,131 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
+import ConfigManager from './configManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const POLICY_FILE = path.join(__dirname, 'rate_limit_policies.csv');
 
 class RateLimitPolicyManager {
-  constructor(policyFile = POLICY_FILE) {
+  constructor(policyFile = POLICY_FILE, enableHotReload = true) {
     this.policyFile = policyFile;
     this.policies = [];
+    this.configManager = null;
+    this.enableHotReload = enableHotReload;
+    
+    // Load initial policies
     this._loadPolicies();
+    
+    // Setup hot-reload if enabled
+    if (this.enableHotReload) {
+      this._setupHotReload();
+    }
+  }
+  
+  /**
+   * Setup hot-reload configuration management
+   * @private
+   */
+  _setupHotReload() {
+    // Create config manager with validator
+    this.configManager = new ConfigManager(
+      this.policyFile,
+      (config) => this._validateConfigBatch(config),
+      {
+        debounceMs: 1000,
+        maxVersions: 10,
+        watchInterval: 1000
+      }
+    );
+    
+    // Listen for config changes
+    this.configManager.on('configChanged', (event) => {
+      console.info('Rate limit policies reloaded from file');
+      this.policies = event.newConfig;
+      
+      if (event.warnings.length > 0) {
+        console.warn('Policy reload warnings:', event.warnings);
+      }
+    });
+    
+    this.configManager.on('configValidationFailed', (event) => {
+      console.error('Rate limit policy validation failed:', event.errors);
+    });
+    
+    this.configManager.on('configReloadError', (event) => {
+      console.error('Error reloading rate limit policies:', event.error);
+    });
+    
+    // Start watching for changes
+    this.configManager.startWatching();
+    
+    console.info('Hot-reload enabled for rate limit policies');
+  }
+  
+  /**
+   * Validate entire configuration batch
+   * @private
+   * @param {Array} config - Array of policies to validate
+   * @returns {Object} Validation result with { valid, errors, warnings }
+   */
+  _validateConfigBatch(config) {
+    const errors = [];
+    const warnings = [];
+    
+    if (!Array.isArray(config)) {
+      return {
+        valid: false,
+        errors: ['Configuration must be an array'],
+        warnings: []
+      };
+    }
+    
+    // Validate each policy
+    const seenIds = new Set();
+    
+    for (let i = 0; i < config.length; i++) {
+      const policy = config[i];
+      const policyErrors = [];
+      
+      // Check for duplicate IDs
+      if (policy.id) {
+        if (seenIds.has(policy.id)) {
+          errors.push(`Duplicate policy ID found: ${policy.id} at line ${i + 2}`);
+        }
+        seenIds.add(policy.id);
+      }
+      
+      // Validate individual policy
+      const { policy: validatedPolicy, errors: validationErrors } = this._validatePolicy(policy);
+      
+      if (validationErrors.length > 0) {
+        // Critical errors
+        const criticalErrors = validationErrors.filter(err => 
+          err.includes('required') || err.includes('at least one')
+        );
+        
+        if (criticalErrors.length > 0) {
+          errors.push(`Policy at line ${i + 2}: ${criticalErrors.join(', ')}`);
+        } else {
+          warnings.push(`Policy at line ${i + 2}: ${validationErrors.join(', ')}`);
+        }
+      }
+      
+      // Update the policy in config with validated version
+      config[i] = validatedPolicy;
+    }
+    
+    // Check if we have at least some valid policies
+    if (config.length === 0) {
+      warnings.push('Configuration is empty');
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors: errors,
+      warnings: warnings
+    };
   }
 
   _validatePolicy(policy) {
@@ -317,6 +432,92 @@ class RateLimitPolicyManager {
     }
     
     return false;
+  }
+
+  /**
+   * Trigger a manual reload of policies
+   * @returns {Promise<Object>} Result with success status
+   */
+  async triggerReload() {
+    if (!this.configManager) {
+      return {
+        success: false,
+        error: 'Hot-reload not enabled'
+      };
+    }
+    
+    return await this.configManager.triggerReload();
+  }
+  
+  /**
+   * Rollback to a previous policy configuration
+   * @param {number} version - Version to rollback to (optional)
+   * @returns {Promise<Object>} Result with success status
+   */
+  async rollback(version = null) {
+    if (!this.configManager) {
+      return {
+        success: false,
+        error: 'Hot-reload not enabled'
+      };
+    }
+    
+    return await this.configManager.rollback(version);
+  }
+  
+  /**
+   * Get current configuration version
+   * @returns {Object|null} Current version info or null if hot-reload not enabled
+   */
+  getCurrentVersion() {
+    if (!this.configManager) {
+      return null;
+    }
+    
+    return this.configManager.getCurrentVersion();
+  }
+  
+  /**
+   * Get configuration version history
+   * @param {number} limit - Maximum number of versions to return
+   * @returns {Array} Array of version info objects
+   */
+  getVersionHistory(limit = 10) {
+    if (!this.configManager) {
+      return [];
+    }
+    
+    return this.configManager.getVersionHistory(limit);
+  }
+  
+  /**
+   * Validate policies without applying them
+   * @param {Array} policies - Policies to validate
+   * @returns {Object} Validation result
+   */
+  validatePolicies(policies) {
+    return this._validateConfigBatch(policies);
+  }
+  
+  /**
+   * Get hot-reload statistics
+   * @returns {Object|null} Statistics or null if hot-reload not enabled
+   */
+  getHotReloadStats() {
+    if (!this.configManager) {
+      return null;
+    }
+    
+    return this.configManager.getStatistics();
+  }
+  
+  /**
+   * Cleanup resources
+   */
+  destroy() {
+    if (this.configManager) {
+      this.configManager.destroy();
+    }
   }
 
   /**
