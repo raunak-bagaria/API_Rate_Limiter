@@ -298,6 +298,7 @@ class IPManager {
     const learnedStats = new Map();
     let totalLearnedRequests = 0;
 
+    // eslint-disable-next-line no-unused-vars
     for (const [ip, data] of this.learnedIps.entries()) {
       const current = learnedStats.get(data.clientName) || { ips: 0, requests: 0 };
       current.ips += 1;
