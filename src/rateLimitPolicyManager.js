@@ -572,9 +572,89 @@ class RateLimitPolicyManager {
   }
 
   /**
+   * Select the best matching policy for a request based on rule hierarchy
+   * Returns the policy with detailed matching information for transparency
+   * 
+   * HIERARCHY (highest to lowest priority):
+   * 1. Client-specific rules (api_key)
+   * 2. Endpoint-specific rules
+   * 3. IP/CIDR rules
+   * 4. Global tier rules
+   * 
+   * USAGE EXAMPLE:
+   * const result = policyManager.selectBestMatchingPolicy({
+   *   endpoint: '/api/users',
+   *   apiKey: 'abc123',
+   *   ip: '192.168.1.100',
+   *   tier: 'premium'
+   * });
+   * 
+   * if (result) {
+   *   console.log(`Matched policy: ${result.policy.id}`);
+   *   console.log(`Hierarchy level: ${result.hierarchyLevel}`);
+   *   console.log(`Score: ${result.score}`);
+   *   console.log(`Match details:`, result.matchDetails);
+   * }
+   * 
+   * @param {Object} reqInfo - { endpoint, apiKey, ip, tier }
+   * @returns {Object|null} Best matching policy with metadata or null if no match
+   *   Returns: { 
+   *     policy: <policy object>,
+   *     score: <numeric score>,
+   *     matchDetails: { hasApiKey, hasEndpoint, hasIpOrCidr, hasTier },
+   *     hierarchyLevel: 'client-specific' | 'endpoint-specific' | 'ip-specific' | 'global'
+   *   }
+   */
+  selectBestMatchingPolicy(reqInfo) {
+    const matchingPolicies = this.findPoliciesForRequest(reqInfo);
+    
+    if (matchingPolicies.length === 0) {
+      return null;
+    }
+    
+    // The first policy is already the best match (sorted by score in findPoliciesForRequest)
+    const bestPolicy = matchingPolicies[0];
+    
+    // Get the match details for the best policy by re-evaluating it
+    // This is for transparency and debugging purposes
+    const normalizedReqInfo = {
+      ...reqInfo,
+      tier: reqInfo.tier ? reqInfo.tier.toLowerCase() : undefined
+    };
+    
+    const matchDetails = {
+      hasApiKey: !!(bestPolicy.api_key && normalizedReqInfo.apiKey && bestPolicy.api_key === normalizedReqInfo.apiKey),
+      hasEndpoint: !!(bestPolicy.endpoint && normalizedReqInfo.endpoint),
+      hasIpOrCidr: !!(bestPolicy.ip_or_cidr && normalizedReqInfo.ip),
+      hasTier: !!(bestPolicy.tier && normalizedReqInfo.tier && bestPolicy.tier === normalizedReqInfo.tier)
+    };
+    
+    // Calculate score for transparency
+    let score = 0;
+    if (matchDetails.hasApiKey) score += 10000;
+    if (matchDetails.hasEndpoint) {
+      if (bestPolicy.endpoint === normalizedReqInfo.endpoint) score += 1000;
+      else if (bestPolicy.endpoint === '*') score += 100;
+      else if (bestPolicy.endpoint.includes(':')) score += 500;
+    }
+    if (matchDetails.hasIpOrCidr) score += 300;
+    if (matchDetails.hasTier) score += 50;
+    
+    return {
+      policy: bestPolicy,
+      score: score,
+      matchDetails: matchDetails,
+      hierarchyLevel: matchDetails.hasApiKey ? 'client-specific' : 
+                      matchDetails.hasEndpoint ? 'endpoint-specific' : 
+                      matchDetails.hasIpOrCidr ? 'ip-specific' : 
+                      'global'
+    };
+  }
+
+  /**
    * Find all policies matching a request
    * @param {Object} reqInfo - { endpoint, apiKey, ip, tier }
-   * @returns {Array} Matching policies
+   * @returns {Array} Matching policies sorted by score (highest first)
    */
   findPoliciesForRequest(reqInfo) {
     const normalizedReqInfo = {
