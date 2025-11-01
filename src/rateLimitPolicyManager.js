@@ -3,6 +3,48 @@
  *
  * Policy fields:
  * id, endpoint, api_key, ip_or_cidr, tier, limit, window
+ * 
+ * RULE HIERARCHY (Most specific to least specific):
+ * =====================================================
+ * 1. CLIENT-SPECIFIC RULES (highest priority)
+ *    - Matched by api_key
+ *    - Example: api_key=abc123, limit=1000
+ *    - Overrides all other rules for that specific client
+ * 
+ * 2. ENDPOINT-SPECIFIC RULES
+ *    - Matched by endpoint path
+ *    - Example: endpoint=/api/users, limit=500
+ *    - Can be combined with api_key, ip_or_cidr, or tier for more specificity
+ * 
+ * 3. GLOBAL RULES (lowest priority)
+ *    - Matched by tier only (applies to all endpoints)
+ *    - Example: tier=free, limit=100
+ *    - Used as fallback when no specific rules match
+ * 
+ * CONFLICT RESOLUTION:
+ * ====================
+ * When multiple rules match a request, the system uses a scoring algorithm:
+ * - api_key match: +200 points
+ * - Exact endpoint match: +400 points
+ * - Wildcard endpoint (*): +100 points
+ * - Path parameter endpoint (/users/:id): +300 points (minus param count)
+ * - IP/CIDR match: +200 points (more specific CIDR = higher score)
+ * - tier match: +200 points
+ * 
+ * The rule with the HIGHEST TOTAL SCORE is selected.
+ * This ensures deterministic and predictable behavior.
+ * 
+ * EXAMPLES:
+ * =========
+ * Rule A: api_key=abc123, endpoint=/api/users, limit=1000
+ * Rule B: endpoint=/api/users, tier=free, limit=100
+ * Rule C: tier=free, limit=50
+ * 
+ * Request from api_key=abc123, endpoint=/api/users, tier=free:
+ *   - Rule A matches: score = 200 (api_key) + 400 (endpoint) = 600 ✓ SELECTED
+ *   - Rule B matches: score = 400 (endpoint) + 200 (tier) = 600
+ *   - Rule C matches: score = 200 (tier) = 200
+ *   Result: Rule A wins (client-specific always wins at same score due to evaluation order)
  */
 
 import fs from 'fs';
