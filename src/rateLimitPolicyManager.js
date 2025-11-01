@@ -24,15 +24,24 @@
  * CONFLICT RESOLUTION:
  * ====================
  * When multiple rules match a request, the system uses a scoring algorithm:
- * - api_key match: +200 points
- * - Exact endpoint match: +400 points
- * - Wildcard endpoint (*): +100 points
- * - Path parameter endpoint (/users/:id): +300 points (minus param count)
- * - IP/CIDR match: +200 points (more specific CIDR = higher score)
- * - tier match: +200 points
+ * - CLIENT-SPECIFIC (api_key match): +10,000 points (dominant)
+ * - ENDPOINT-SPECIFIC:
+ *   - Exact endpoint match: +1,000 points
+ *   - Parameterized endpoint (/users/:id): +500 points (minus 10 per param)
+ *   - Wildcard endpoint (*): +100 points
+ * - IP/CIDR matching:
+ *   - Exact IP match: +332 points
+ *   - CIDR match: +300 to +332 points (more specific = higher)
+ * - GLOBAL (tier match): +50 points (fallback)
  * 
  * The rule with the HIGHEST TOTAL SCORE is selected.
  * This ensures deterministic and predictable behavior.
+ * 
+ * SCORING EXAMPLES:
+ * =================
+ * api_key + endpoint + tier = 10,000 + 1,000 + 50 = 11,050 (client-specific wins)
+ * endpoint + ip + tier       = 1,000 + 332 + 50   = 1,382  (endpoint-specific)
+ * tier only                  = 50                  = 50     (global fallback)
  * 
  * EXAMPLES:
  * =========
@@ -574,16 +583,37 @@ class RateLimitPolicyManager {
     };
 
     // Calculate match scores and filter matching policies
+    // Scoring hierarchy ensures: Client-specific > Endpoint-specific > Global
     const matchingPolicies = this.policies.map(policy => {
-      let score = parseInt(policy.priority || '0') * 1000;
+      let score = 0;
       let matches = true;
+      let matchDetails = {
+        hasApiKey: false,
+        hasEndpoint: false,
+        hasIpOrCidr: false,
+        hasTier: false
+      };
 
-      // Exact endpoint match has highest precedence
-      if (policy.endpoint && normalizedReqInfo.endpoint) {
+      // PRIORITY 1: Client-specific (api_key) - Highest weight
+      if (policy.api_key && normalizedReqInfo.apiKey) {
+        if (policy.api_key === normalizedReqInfo.apiKey) {
+          score += 10000; // Client-specific gets massive boost
+          matchDetails.hasApiKey = true;
+        } else {
+          matches = false;
+        }
+      }
+
+      // PRIORITY 2: Endpoint-specific matching
+      if (matches && policy.endpoint && normalizedReqInfo.endpoint) {
         if (policy.endpoint === normalizedReqInfo.endpoint) {
-          score += 400;
+          // Exact endpoint match
+          score += 1000;
+          matchDetails.hasEndpoint = true;
         } else if (policy.endpoint === '*') {
+          // Wildcard endpoint (catches all)
           score += 100;
+          matchDetails.hasEndpoint = true;
         } else if (policy.endpoint.includes(':')) {
           // Path parameter matching (e.g., /users/:id)
           const policyParts = policy.endpoint.split('/');
@@ -600,7 +630,9 @@ class RateLimitPolicyManager {
               }
             }
             if (paramMatch) {
-              score += 300 - paramCount; // More params = slightly lower score
+              // Parameterized endpoint: less specific than exact, more than wildcard
+              score += 500 - (paramCount * 10); // More params = slightly lower score
+              matchDetails.hasEndpoint = true;
             } else {
               matches = false;
             }
@@ -612,16 +644,7 @@ class RateLimitPolicyManager {
         }
       }
 
-      // Match api_key
-      if (matches && policy.api_key && normalizedReqInfo.apiKey) {
-        if (policy.api_key === normalizedReqInfo.apiKey) {
-          score += 200;
-        } else {
-          matches = false;
-        }
-      }
-
-      // Match ip_or_cidr
+      // PRIORITY 3: IP/CIDR matching (network-level specificity)
       if (matches && policy.ip_or_cidr && normalizedReqInfo.ip) {
         if (policy.ip_or_cidr.includes('/')) {
           // CIDR matching
@@ -657,27 +680,32 @@ class RateLimitPolicyManager {
           }
           
           if ((reqIpInt & netMask) === (subnetInt & netMask)) {
-            score += 200 - (32 - bitsNum); // More specific CIDR = higher score
+            // More specific CIDR (smaller range) = higher score
+            score += 300 + bitsNum; // /32 gets 332, /24 gets 324, /16 gets 316
+            matchDetails.hasIpOrCidr = true;
           } else {
             matches = false;
           }
         } else if (policy.ip_or_cidr === normalizedReqInfo.ip) {
-          score += 200;
+          // Exact IP match (equivalent to /32)
+          score += 332;
+          matchDetails.hasIpOrCidr = true;
         } else {
           matches = false;
         }
       }
 
-      // Match tier
+      // PRIORITY 4: Tier matching (global fallback)
       if (matches && policy.tier && normalizedReqInfo.tier) {
         if (policy.tier === normalizedReqInfo.tier) {
-          score += 200;
+          score += 50; // Lowest weight - this is the global fallback
+          matchDetails.hasTier = true;
         } else {
           matches = false;
         }
       }
 
-      return { policy, score, matches };
+      return { policy, score, matches, matchDetails };
     })
     .filter(item => item.matches)
     .sort((a, b) => b.score - a.score)
