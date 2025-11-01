@@ -59,17 +59,36 @@ describe('IPAllowBlockManager', () => {
 
   afterEach(() => {
     // Cleanup test files
-    if (fs.existsSync(testAllowlistFile)) {
-      fs.unlinkSync(testAllowlistFile);
-    }
-    if (fs.existsSync(testBlocklistFile)) {
-      fs.unlinkSync(testBlocklistFile);
+    try {
+      if (fs.existsSync(testAllowlistFile)) {
+        fs.unlinkSync(testAllowlistFile);
+      }
+      if (fs.existsSync(testBlocklistFile)) {
+        fs.unlinkSync(testBlocklistFile);
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+      console.warn(`Cleanup warning in ipAllowBlockManager.test.js afterEach: ${error.message}`);
     }
   });
 
   afterAll(() => {
-    if (fs.existsSync(fixturesDir)) {
-      fs.rmdirSync(fixturesDir, { recursive: true });
+    try {
+      if (fs.existsSync(fixturesDir)) {
+        // Remove all remaining files
+        const files = fs.readdirSync(fixturesDir);
+        for (const file of files) {
+          const filePath = path.join(fixturesDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+        // Remove directory
+        fs.rmdirSync(fixturesDir);
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+      console.warn(`Cleanup warning in ipAllowBlockManager.test.js afterAll: ${error.message}`);
     }
   });
 
