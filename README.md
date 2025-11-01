@@ -146,6 +146,54 @@ curl -H "X-API-Key: 12345-ABCDE" \
 # Returns HTTP 403 Forbidden
 ```
 
+### Rate Limit Response Headers
+
+The API exposes rate limit information in HTTP response headers to allow clients to understand their rate limit status and adjust their request pacing intelligently.
+
+#### Standard Headers
+
+| Header | Description | Example |
+|--------|-------------|---------|
+| `X-RateLimit-Limit` | Total requests allowed in the current window | `100` |
+| `X-RateLimit-Remaining` | Requests remaining in the current window | `42` |
+| `X-RateLimit-Reset` | Unix timestamp when window resets | `1761885479` |
+| `X-RateLimit-Window` | Duration of rate limit window in seconds | `60` |
+| `X-RateLimit-Accuracy-Margin` | Accuracy margin of rate limit calculations | `5%` |
+| `Retry-After` (429 only) | Seconds to wait before retrying (RFC 6585) | `45` |
+
+#### Example Request/Response
+
+**Request:**
+```bash
+curl -H "X-API-Key: 12345-ABCDE" http://localhost:3000/data
+```
+
+**Response Headers (HTTP 200):**
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 42
+X-RateLimit-Reset: 1761885479
+X-RateLimit-Window: 60
+X-RateLimit-Accuracy-Margin: 5%
+```
+
+**Rate Limited Response (HTTP 429):**
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1761885524
+Retry-After: 45
+X-RateLimit-Retry-After: 45
+```
+
+#### Client SDK Examples
+
+See [Rate Limit Headers Documentation](docs/rate-limit-headers.md) for comprehensive client implementation examples in:
+- JavaScript/Node.js
+- Python
+- cURL
+- Best practices for intelligent request pacing
+
 ## 🛠️ Development Guidelines
 
 ### Branching Strategy
