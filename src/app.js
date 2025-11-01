@@ -24,6 +24,7 @@ import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
 import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 import RateLimiter from './rateLimiter.js';
 import ErrorMessageManager, { BlockType } from './errorMessageManager.js';
+import RateLimitHeaderManager from './rateLimitHeaderManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -90,6 +91,7 @@ const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
 const rateLimiter = new RateLimiter();
 const errorMessageManager = new ErrorMessageManager();
+const rateLimitHeaderManager = new RateLimitHeaderManager();
 
 // Import and initialize rate limit policy manager (for future use)
 import RateLimitPolicyManager from './rateLimitPolicyManager.js';
@@ -143,6 +145,17 @@ app.get('/data', (req, res) => {
     });
     
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    // Prepare rate limit info for headers
+    const rateLimitInfo = {
+      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
+      remaining: 0,
+      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
+      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
+    };
+    
+    // Apply rate limit headers for 429 response
+    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
+    
     return res.status(429).json({
       error: {
         message: errorMessage,
@@ -155,6 +168,18 @@ app.get('/data', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
+
+  // Get current rate limit status for headers
+  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
+  const rateLimitInfo = {
+    limit: rateLimitStatus.windows.second?.limit || 0,
+    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
+    resetTime: Date.now() + 60000,
+    windowSeconds: 60
+  };
+  
+  // Apply rate limit headers
+  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   console.log(
     `✓ Request from ${identity.clientName} (${identity.classification}) ` +
@@ -212,6 +237,17 @@ app.get('/tier-info', (req, res) => {
     });
     
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    // Prepare rate limit info for headers
+    const rateLimitInfo = {
+      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
+      remaining: 0,
+      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
+      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
+    };
+    
+    // Apply rate limit headers for 429 response
+    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
+    
     return res.status(429).json({
       error: {
         message: errorMessage,
@@ -224,6 +260,18 @@ app.get('/tier-info', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
+
+  // Get current rate limit status for headers
+  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
+  const rateLimitInfo = {
+    limit: rateLimitStatus.windows.second?.limit || 0,
+    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
+    resetTime: Date.now() + 60000,
+    windowSeconds: 60
+  };
+  
+  // Apply rate limit headers
+  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   const tierInfo = {
     clientName: identity.clientName,
@@ -314,6 +362,17 @@ app.get('/premium-only', (req, res) => {
     });
     
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
+    // Prepare rate limit info for headers
+    const rateLimitInfo = {
+      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
+      remaining: 0,
+      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
+      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
+    };
+    
+    // Apply rate limit headers for 429 response
+    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
+    
     return res.status(429).json({
       error: {
         message: errorMessage,
@@ -326,6 +385,18 @@ app.get('/premium-only', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
+
+  // Get current rate limit status for headers
+  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
+  const rateLimitInfo = {
+    limit: rateLimitStatus.windows.second?.limit || 0,
+    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
+    resetTime: Date.now() + 60000,
+    windowSeconds: 60
+  };
+  
+  // Apply rate limit headers
+  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   console.log(`Premium endpoint accessed by ${identity.clientName}`);
   res.json({
