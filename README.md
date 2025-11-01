@@ -75,22 +75,41 @@ PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers/
 │   ├── apiKeyManager.js       # API key validation
 │   ├── ipManager.js           # IP learning and CIDR management
 │   ├── ipAllowBlockManager.js # IP allowlist/blocklist management
+│   ├── errorMessageManager.js # Custom error message management
 │   ├── clients.csv            # API key client configurations
 │   ├── client_cidr.csv        # Preconfigured CIDR ranges
 │   ├── client_ips.csv         # Learned IP addresses
 │   ├── ip_allowlist.csv       # Allowlisted IPs and CIDR ranges
-│   └── ip_blocklist.csv       # Blocklisted IPs and CIDR ranges
+│   ├── ip_blocklist.csv       # Blocklisted IPs and CIDR ranges
+│   └── error_messages.csv     # Custom error message templates
 ├── docs/               # Documentation
+│   ├── ERROR_MESSAGES.md      # Custom error messages documentation
+│   └── ...
 ├── tests/              # Test files
 │   ├── apiKeyManager.test.js
 │   ├── ipManager.test.js
-│   └── ipAllowBlockManager.test.js
+│   ├── ipAllowBlockManager.test.js
+│   ├── errorMessageManager.test.js
+│   └── ...
 ├── .github/            # GitHub workflows and templates
 ├── README.md          # This file
 └── ...
 ```
 
 ## 🔒 Security Features
+
+### Custom Error Messages
+
+The API Rate Limiter supports configurable custom error messages for blocked and rate-limited responses:
+
+#### Features
+- **Configurable per Block Type**: Different messages for rate limits, IP blocklists, unauthorized access, and tier restrictions
+- **Template Variables**: Dynamic variable substitution (e.g., `{{clientName}}`, `{{retryAfter}}`, `{{contactEmail}}`)
+- **Default Messages**: Fallback to sensible defaults if custom messages are not configured
+- **Hot Reload**: Update messages without restarting the service
+- **Admin API**: Manage messages through REST endpoints
+
+For detailed documentation, see [Custom Error Messages Documentation](docs/ERROR_MESSAGES.md).
 
 ### IP Allowlists and Blocklists
 
