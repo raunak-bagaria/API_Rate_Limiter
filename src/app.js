@@ -77,10 +77,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier, IP allow/block manager, and rate limiter
+// Initialize unified client identifier, IP allow/block manager, rate limiter, and policy manager
 const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
 const rateLimiter = new RateLimiter();
+
+// Import and initialize rate limit policy manager (for future use)
+import RateLimitPolicyManager from './rateLimitPolicyManager.js';
+const policyManager = new RateLimitPolicyManager();
+
+console.info('Rate limit policy manager initialized with hot-reload enabled');
 
 /**
  * Main data endpoint
@@ -541,6 +547,214 @@ app.get('/admin/rate-limits/tier/:tier', (req, res) => {
     console.error(`Error retrieving tier limits: ${error.message}`);
     res.status(500).json({
       error: { message: `Failed to retrieve tier limits: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get rate limits for a tier
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/rate-limits/tier/:tier', (req, res) => {
+  try {
+    const { tier } = req.params;
+    const limits = rateLimiter.getTierLimits(tier);
+    
+    if (!limits) {
+      return res.status(404).json({
+        error: { message: `Unknown tier: ${tier}` }
+      });
+    }
+    
+    res.json({
+      tier: tier,
+      limits: limits
+    });
+  } catch (error) {
+    console.error(`Error retrieving tier limits: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve tier limits: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to manually trigger policy reload
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/reload', async (req, res) => {
+  try {
+    const result = await policyManager.triggerReload();
+    
+    if (result.success) {
+      res.json({
+        message: 'Policies reloaded successfully',
+        version: result.version,
+        entriesCount: result.entriesCount,
+        warnings: result.warnings || []
+      });
+    } else {
+      res.status(400).json({
+        error: {
+          message: 'Policy reload failed',
+          errors: result.errors || [],
+          warnings: result.warnings || []
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`Error triggering policy reload: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to trigger reload: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to rollback to previous policy configuration
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/rollback', async (req, res) => {
+  try {
+    const { version } = req.body;
+    const result = await policyManager.rollback(version || null);
+    
+    if (result.success) {
+      res.json({
+        message: 'Policies rolled back successfully',
+        version: result.version,
+        entriesCount: result.entriesCount
+      });
+    } else {
+      res.status(400).json({
+        error: {
+          message: 'Rollback failed',
+          reason: result.error
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`Error during rollback: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to rollback: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get current policy version
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/version', (req, res) => {
+  try {
+    const version = policyManager.getCurrentVersion();
+    
+    if (!version) {
+      return res.status(404).json({
+        error: { message: 'No version information available' }
+      });
+    }
+    
+    res.json(version);
+  } catch (error) {
+    console.error(`Error retrieving version: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve version: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get policy version history
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/history', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const history = policyManager.getVersionHistory(limit);
+    
+    res.json({
+      totalVersions: history.length,
+      versions: history
+    });
+  } catch (error) {
+    console.error(`Error retrieving history: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve history: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to validate policies without applying
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/validate', (req, res) => {
+  try {
+    const { policies } = req.body;
+    
+    if (!policies || !Array.isArray(policies)) {
+      return res.status(400).json({
+        error: { message: 'policies array is required in request body' }
+      });
+    }
+    
+    const validation = policyManager.validatePolicies(policies);
+    
+    res.json({
+      valid: validation.valid,
+      errors: validation.errors || [],
+      warnings: validation.warnings || []
+    });
+  } catch (error) {
+    console.error(`Error validating policies: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to validate policies: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get all policies
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies', (req, res) => {
+  try {
+    const policies = policyManager.getAllPolicies();
+    const version = policyManager.getCurrentVersion();
+    
+    res.json({
+      version: version,
+      totalPolicies: policies.length,
+      policies: policies
+    });
+  } catch (error) {
+    console.error(`Error retrieving policies: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve policies: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get hot-reload statistics
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/stats', (req, res) => {
+  try {
+    const stats = policyManager.getHotReloadStats();
+    
+    if (!stats) {
+      return res.status(404).json({
+        error: { message: 'Hot-reload not enabled' }
+      });
+    }
+    
+    res.json(stats);
+  } catch (error) {
+    console.error(`Error retrieving hot-reload stats: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve stats: ${error.message}` }
     });
   }
 });
