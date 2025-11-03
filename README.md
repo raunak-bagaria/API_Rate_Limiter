@@ -75,22 +75,41 @@ PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers/
 │   ├── apiKeyManager.js       # API key validation
 │   ├── ipManager.js           # IP learning and CIDR management
 │   ├── ipAllowBlockManager.js # IP allowlist/blocklist management
+│   ├── errorMessageManager.js # Custom error message management
 │   ├── clients.csv            # API key client configurations
 │   ├── client_cidr.csv        # Preconfigured CIDR ranges
 │   ├── client_ips.csv         # Learned IP addresses
 │   ├── ip_allowlist.csv       # Allowlisted IPs and CIDR ranges
-│   └── ip_blocklist.csv       # Blocklisted IPs and CIDR ranges
+│   ├── ip_blocklist.csv       # Blocklisted IPs and CIDR ranges
+│   └── error_messages.csv     # Custom error message templates
 ├── docs/               # Documentation
+│   ├── ERROR_MESSAGES.md      # Custom error messages documentation
+│   └── ...
 ├── tests/              # Test files
 │   ├── apiKeyManager.test.js
 │   ├── ipManager.test.js
-│   └── ipAllowBlockManager.test.js
+│   ├── ipAllowBlockManager.test.js
+│   ├── errorMessageManager.test.js
+│   └── ...
 ├── .github/            # GitHub workflows and templates
 ├── README.md          # This file
 └── ...
 ```
 
 ## 🔒 Security Features
+
+### Custom Error Messages
+
+The API Rate Limiter supports configurable custom error messages for blocked and rate-limited responses:
+
+#### Features
+- **Configurable per Block Type**: Different messages for rate limits, IP blocklists, unauthorized access, and tier restrictions
+- **Template Variables**: Dynamic variable substitution (e.g., `{{clientName}}`, `{{retryAfter}}`, `{{contactEmail}}`)
+- **Default Messages**: Fallback to sensible defaults if custom messages are not configured
+- **Hot Reload**: Update messages without restarting the service
+- **Admin API**: Manage messages through REST endpoints
+
+For detailed documentation, see [Custom Error Messages Documentation](docs/ERROR_MESSAGES.md).
 
 ### IP Allowlists and Blocklists
 
@@ -145,54 +164,6 @@ curl -H "X-API-Key: 12345-ABCDE" \
      http://localhost:3000/data
 # Returns HTTP 403 Forbidden
 ```
-
-### Rate Limit Response Headers
-
-The API exposes rate limit information in HTTP response headers to allow clients to understand their rate limit status and adjust their request pacing intelligently.
-
-#### Standard Headers
-
-| Header | Description | Example |
-|--------|-------------|---------|
-| `X-RateLimit-Limit` | Total requests allowed in the current window | `100` |
-| `X-RateLimit-Remaining` | Requests remaining in the current window | `42` |
-| `X-RateLimit-Reset` | Unix timestamp when window resets | `1761885479` |
-| `X-RateLimit-Window` | Duration of rate limit window in seconds | `60` |
-| `X-RateLimit-Accuracy-Margin` | Accuracy margin of rate limit calculations | `5%` |
-| `Retry-After` (429 only) | Seconds to wait before retrying (RFC 6585) | `45` |
-
-#### Example Request/Response
-
-**Request:**
-```bash
-curl -H "X-API-Key: 12345-ABCDE" http://localhost:3000/data
-```
-
-**Response Headers (HTTP 200):**
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 42
-X-RateLimit-Reset: 1761885479
-X-RateLimit-Window: 60
-X-RateLimit-Accuracy-Margin: 5%
-```
-
-**Rate Limited Response (HTTP 429):**
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1761885524
-Retry-After: 45
-X-RateLimit-Retry-After: 45
-```
-
-#### Client SDK Examples
-
-See [Rate Limit Headers Documentation](docs/rate-limit-headers.md) for comprehensive client implementation examples in:
-- JavaScript/Node.js
-- Python
-- cURL
-- Best practices for intelligent request pacing
 
 ## 🛠️ Development Guidelines
 

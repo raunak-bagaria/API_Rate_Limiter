@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// eslint-disable-next-line no-unused-vars
 import { jest } from '@jest/globals';
 import ConfigManager from '../src/configManager.js';
 

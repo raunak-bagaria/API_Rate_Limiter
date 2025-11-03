@@ -12,6 +12,7 @@
  * - Admin operations
  */
 
+// eslint-disable-next-line no-unused-vars
 import RateLimiter, { DEFAULT_RATE_LIMITS, TIME_WINDOWS } from '../src/rateLimiter.js';
 
 describe('RateLimiter', () => {

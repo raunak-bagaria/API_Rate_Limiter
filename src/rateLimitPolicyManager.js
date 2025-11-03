@@ -95,6 +95,7 @@ class RateLimitPolicyManager {
     
     for (let i = 0; i < config.length; i++) {
       const policy = config[i];
+      // eslint-disable-next-line no-unused-vars
       const policyErrors = [];
       
       // Check for duplicate IDs

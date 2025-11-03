@@ -213,7 +213,8 @@ class ConfigManager extends EventEmitter {
     this.watcher = fs.watchFile(this.configFile, {
       persistent: true,
       interval: this.watchInterval
-    }, (curr, prev) => {
+      // eslint-disable-next-line no-unused-vars
+    }, (curr, _prev) => {
       // Check if file was actually modified
       if (curr.mtimeMs > this.lastModifiedTime) {
         console.info(`Config file changed detected (mtime: ${new Date(curr.mtimeMs).toISOString()})`);

@@ -76,7 +76,7 @@ class RateLimitHeaderManager {
       res.set('X-RateLimit-Accuracy-Margin', `${this.accuracyMargin}%`);
 
       console.info(
-        `Rate limit headers applied: ` +
+        'Rate limit headers applied: ' +
         `Limit=${rateLimitInfo.limit}, ` +
         `Remaining=${Math.max(0, rateLimitInfo.remaining)}, ` +
         `Reset=${resetUnix}, ` +

@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// eslint-disable-next-line no-unused-vars
 import { jest } from '@jest/globals';
 import RateLimitPolicyManager from '../src/rateLimitPolicyManager.js';
 
@@ -387,7 +388,7 @@ describe('RateLimitPolicyManager Hot-Reload', () => {
       // Start multiple operations concurrently
       for (let i = 0; i < 5; i++) {
         // Reload operation
-        const newPolicies = `id,endpoint,api_key,ip_or_cidr,tier,limit,window\n` +
+        const newPolicies = 'id,endpoint,api_key,ip_or_cidr,tier,limit,window\n' +
           Array.from({length: i + 2}, (_, idx) => 
             `${idx+1},/test${idx+1},,,free,${(idx+1)*10},60`
           ).join('\n') + '\n';

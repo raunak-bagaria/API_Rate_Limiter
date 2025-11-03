@@ -23,7 +23,7 @@ import express from 'express';
 import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
 import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 import RateLimiter from './rateLimiter.js';
-import RateLimitHeaderManager from './rateLimitHeaderManager.js';
+import ErrorMessageManager from './errorMessageManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,10 +61,17 @@ app.use((req, res, next) => {
   
   if (ipCheck.action === IPListAction.BLOCK) {
     console.log(`🚫 Blocked request from ${clientIP}: ${ipCheck.reason}`);
+    
+    // Get custom error message
+    const errorMessage = errorMessageManager.getIPBlocklistMessage({
+      clientIP: clientIP,
+      reason: ipCheck.reason
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'Access denied',
-        reason: 'IP address is blocklisted',
+        message: errorMessage,
+        reason: ipCheck.reason,
         clientIP: clientIP
       }
     });
@@ -78,11 +85,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier, IP allow/block manager, rate limiter, and policy manager
+// Initialize unified client identifier, IP allow/block manager, rate limiter, error message manager, and policy manager
 const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
 const rateLimiter = new RateLimiter();
-const rateLimitHeaderManager = new RateLimitHeaderManager();
+const errorMessageManager = new ErrorMessageManager();
 
 // Import and initialize rate limit policy manager (for future use)
 import RateLimitPolicyManager from './rateLimitPolicyManager.js';
@@ -100,7 +107,19 @@ app.get('/data', (req, res) => {
 
   if (!identity.valid) {
     console.log(`Unauthorized request from ${req.ip}: ${identity.error.message}`);
-    return res.status(401).json(identity.toJSON());
+    
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -112,20 +131,21 @@ app.get('/data', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
-    // Prepare rate limit info for headers
-    const rateLimitInfo = {
-      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
-      remaining: 0,
-      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
-      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
-    };
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
     
-    // Apply rate limit headers for 429 response
-    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
-    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -135,18 +155,6 @@ app.get('/data', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
-
-  // Get current rate limit status for headers
-  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
-  const rateLimitInfo = {
-    limit: rateLimitStatus.windows.second?.limit || 0,
-    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
-    resetTime: Date.now() + 60000,
-    windowSeconds: 60
-  };
-  
-  // Apply rate limit headers
-  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   console.log(
     `✓ Request from ${identity.clientName} (${identity.classification}) ` +
@@ -169,7 +177,18 @@ app.get('/tier-info', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -181,20 +200,21 @@ app.get('/tier-info', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
-    // Prepare rate limit info for headers
-    const rateLimitInfo = {
-      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
-      remaining: 0,
-      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
-      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
-    };
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
     
-    // Apply rate limit headers for 429 response
-    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
-    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -204,18 +224,6 @@ app.get('/tier-info', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
-
-  // Get current rate limit status for headers
-  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
-  const rateLimitInfo = {
-    limit: rateLimitStatus.windows.second?.limit || 0,
-    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
-    resetTime: Date.now() + 60000,
-    windowSeconds: 60
-  };
-  
-  // Apply rate limit headers
-  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   const tierInfo = {
     clientName: identity.clientName,
@@ -249,7 +257,18 @@ app.get('/premium-only', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   if (!(identity.isTier(ClientTier.PREMIUM) || identity.isTier(ClientTier.ENTERPRISE))) {
@@ -257,9 +276,17 @@ app.get('/premium-only', (req, res) => {
       `Access denied to premium endpoint for ${identity.clientName} ` +
       `(tier: ${identity.classification})`
     );
+    
+    // Get custom tier-restricted error message
+    const errorMessage = errorMessageManager.getTierRestrictedMessage({
+      clientName: identity.clientName,
+      yourTier: identity.classification,
+      requiredTier: 'premium or higher'
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'This endpoint requires premium or enterprise tier',
+        message: errorMessage,
         yourTier: identity.classification,
         requiredTier: 'premium or higher'
       }
@@ -275,20 +302,21 @@ app.get('/premium-only', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
-    // Prepare rate limit info for headers
-    const rateLimitInfo = {
-      limit: rateLimitResult.windows[rateLimitResult.limitingWindow]?.limit || 0,
-      remaining: 0,
-      resetTime: Date.now() + (rateLimitResult.retryAfter * 1000),
-      windowSeconds: rateLimitResult.windows[rateLimitResult.limitingWindow]?.windowSeconds || 60
-    };
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
     
-    // Apply rate limit headers for 429 response
-    rateLimitHeaderManager.applyRateLimitedHeaders(res, rateLimitInfo);
-    
+    res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -298,18 +326,6 @@ app.get('/premium-only', (req, res) => {
 
   // Record the request
   rateLimiter.recordRequest(identity.clientName, identity.classification);
-
-  // Get current rate limit status for headers
-  const rateLimitStatus = rateLimiter.checkRequest(identity.clientName, identity.classification);
-  const rateLimitInfo = {
-    limit: rateLimitStatus.windows.second?.limit || 0,
-    remaining: Math.max(0, (rateLimitStatus.windows.second?.limit || 0) - (rateLimitStatus.windows.second?.used || 0)),
-    resetTime: Date.now() + 60000,
-    windowSeconds: 60
-  };
-  
-  // Apply rate limit headers
-  rateLimitHeaderManager.applyHeaders(res, rateLimitInfo, false);
 
   console.log(`Premium endpoint accessed by ${identity.clientName}`);
   res.json({
@@ -327,14 +343,17 @@ app.post('/admin/reload', (req, res) => {
   try {
     clientIdentifier.reloadAll();
     ipAllowBlockManager.reloadAll();
+    errorMessageManager.reload();
     const stats = clientIdentifier.getStatistics();
     const ipListStats = ipAllowBlockManager.getStatistics();
+    const errorMessageStats = errorMessageManager.getStatistics();
 
     console.log('✓ Configurations reloaded successfully');
     res.json({
       message: 'Configurations reloaded successfully',
       statistics: stats,
-      ipLists: ipListStats
+      ipLists: ipListStats,
+      errorMessages: errorMessageStats
     });
   } catch (error) {
     console.error(`Error reloading: ${error.message}`);
@@ -828,6 +847,147 @@ app.get('/admin/policies/stats', (req, res) => {
 });
 
 /**
+ * Admin endpoint to get all error messages
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/error-messages', (req, res) => {
+  try {
+    const messages = errorMessageManager.getAllMessages();
+    const stats = errorMessageManager.getStatistics();
+    
+    res.json({
+      messages: messages,
+      statistics: stats
+    });
+  } catch (error) {
+    console.error(`Error retrieving error messages: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve error messages: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get a specific error message
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/error-messages/:blockType', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
+    
+    if (!messageTemplate) {
+      return res.status(404).json({
+        error: { message: `No message template found for block type: ${blockType}` }
+      });
+    }
+    
+    res.json({
+      blockType: blockType,
+      messageTemplate: messageTemplate
+    });
+  } catch (error) {
+    console.error(`Error retrieving error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to update an error message
+ * In production, protect this with admin authentication
+ */
+app.put('/admin/error-messages/:blockType', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const { messageTemplate } = req.body;
+    
+    if (!messageTemplate) {
+      return res.status(400).json({
+        error: { message: 'messageTemplate is required in request body' }
+      });
+    }
+    
+    const success = errorMessageManager.updateMessage(blockType, messageTemplate);
+    
+    if (success) {
+      res.json({
+        message: `Updated error message for block type: ${blockType}`,
+        blockType: blockType,
+        messageTemplate: messageTemplate
+      });
+    } else {
+      res.status(400).json({
+        error: { message: `Failed to update error message for block type: ${blockType}` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error updating error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to update error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to reset an error message to default
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/error-messages/:blockType/reset', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const success = errorMessageManager.resetToDefault(blockType);
+    
+    if (success) {
+      const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
+      res.json({
+        message: `Reset error message to default for block type: ${blockType}`,
+        blockType: blockType,
+        messageTemplate: messageTemplate
+      });
+    } else {
+      res.status(404).json({
+        error: { message: `Unknown block type: ${blockType}` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error resetting error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to reset error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to update contact email
+ * In production, protect this with admin authentication
+ */
+app.put('/admin/error-messages/contact-email', (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        error: { message: 'email is required in request body' }
+      });
+    }
+    
+    errorMessageManager.setContactEmail(email);
+    
+    res.json({
+      message: 'Contact email updated successfully',
+      contactEmail: email
+    });
+  } catch (error) {
+    console.error(`Error updating contact email: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to update contact email: ${error.message}` }
+    });
+  }
+});
+
+/**
  * Health check endpoint
  */
 app.get('/health', (req, res) => {
@@ -838,7 +998,8 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }
