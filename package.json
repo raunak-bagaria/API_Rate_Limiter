@@ -35,7 +35,8 @@
     "csv-parse": "^6.1.0",
     "csv-stringify": "^6.6.0",
     "express": "^5.1.0",
-    "ip-cidr": "^4.0.2"
+    "ip-cidr": "^4.0.2",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
