@@ -1,0 +1,5 @@
+block_type,message_template,description
+rate_limit,Rate limit exceeded for {{limitingWindow}} window. You have made {{currentCount}} requests out of {{limit}} allowed. Please wait {{retryAfter}} seconds before retrying. Contact {{contactEmail}} for assistance.,Message displayed when a client exceeds rate limits
+ip_blocklist,Access denied. Your IP address ({{clientIP}}) has been blocked. If you believe this is an error please contact {{contactEmail}}.,Message displayed when an IP is on the blocklist
+unauthorized,Unauthorized request. Invalid or missing API key. Please provide a valid X-API-Key header. Contact {{contactEmail}} for API access.,Message displayed when API key is invalid or missing
+tier_restricted,Access denied. This endpoint requires {{requiredTier}} tier or higher. Your current tier is {{yourTier}}. Contact {{contactEmail}} to upgrade your account.,Message displayed when a client tries to access a tier-restricted endpoint

@@ -23,6 +23,7 @@ import express from 'express';
 import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
 import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 import RateLimiter from './rateLimiter.js';
+import ErrorMessageManager from './errorMessageManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,10 +61,17 @@ app.use((req, res, next) => {
   
   if (ipCheck.action === IPListAction.BLOCK) {
     console.log(`🚫 Blocked request from ${clientIP}: ${ipCheck.reason}`);
+    
+    // Get custom error message
+    const errorMessage = errorMessageManager.getIPBlocklistMessage({
+      clientIP: clientIP,
+      reason: ipCheck.reason
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'Access denied',
-        reason: 'IP address is blocklisted',
+        message: errorMessage,
+        reason: ipCheck.reason,
         clientIP: clientIP
       }
     });
@@ -77,10 +85,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier, IP allow/block manager, and rate limiter
+// Initialize unified client identifier, IP allow/block manager, rate limiter, error message manager, and policy manager
 const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
 const rateLimiter = new RateLimiter();
+const errorMessageManager = new ErrorMessageManager();
+
+// Import and initialize rate limit policy manager (for future use)
+import RateLimitPolicyManager from './rateLimitPolicyManager.js';
+const policyManager = new RateLimitPolicyManager();
+
+console.info('Rate limit policy manager initialized with hot-reload enabled');
 
 /**
  * Main data endpoint
@@ -92,7 +107,19 @@ app.get('/data', (req, res) => {
 
   if (!identity.valid) {
     console.log(`Unauthorized request from ${req.ip}: ${identity.error.message}`);
-    return res.status(401).json(identity.toJSON());
+    
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -104,10 +131,21 @@ app.get('/data', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -139,7 +177,18 @@ app.get('/tier-info', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -151,10 +200,21 @@ app.get('/tier-info', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -197,7 +257,18 @@ app.get('/premium-only', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   if (!(identity.isTier(ClientTier.PREMIUM) || identity.isTier(ClientTier.ENTERPRISE))) {
@@ -205,9 +276,17 @@ app.get('/premium-only', (req, res) => {
       `Access denied to premium endpoint for ${identity.clientName} ` +
       `(tier: ${identity.classification})`
     );
+    
+    // Get custom tier-restricted error message
+    const errorMessage = errorMessageManager.getTierRestrictedMessage({
+      clientName: identity.clientName,
+      yourTier: identity.classification,
+      requiredTier: 'premium or higher'
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'This endpoint requires premium or enterprise tier',
+        message: errorMessage,
         yourTier: identity.classification,
         requiredTier: 'premium or higher'
       }
@@ -223,10 +302,21 @@ app.get('/premium-only', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -253,14 +343,17 @@ app.post('/admin/reload', (req, res) => {
   try {
     clientIdentifier.reloadAll();
     ipAllowBlockManager.reloadAll();
+    errorMessageManager.reload();
     const stats = clientIdentifier.getStatistics();
     const ipListStats = ipAllowBlockManager.getStatistics();
+    const errorMessageStats = errorMessageManager.getStatistics();
 
     console.log('✓ Configurations reloaded successfully');
     res.json({
       message: 'Configurations reloaded successfully',
       statistics: stats,
-      ipLists: ipListStats
+      ipLists: ipListStats,
+      errorMessages: errorMessageStats
     });
   } catch (error) {
     console.error(`Error reloading: ${error.message}`);
@@ -546,6 +639,355 @@ app.get('/admin/rate-limits/tier/:tier', (req, res) => {
 });
 
 /**
+ * Admin endpoint to get rate limits for a tier
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/rate-limits/tier/:tier', (req, res) => {
+  try {
+    const { tier } = req.params;
+    const limits = rateLimiter.getTierLimits(tier);
+    
+    if (!limits) {
+      return res.status(404).json({
+        error: { message: `Unknown tier: ${tier}` }
+      });
+    }
+    
+    res.json({
+      tier: tier,
+      limits: limits
+    });
+  } catch (error) {
+    console.error(`Error retrieving tier limits: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve tier limits: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to manually trigger policy reload
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/reload', async (req, res) => {
+  try {
+    const result = await policyManager.triggerReload();
+    
+    if (result.success) {
+      res.json({
+        message: 'Policies reloaded successfully',
+        version: result.version,
+        entriesCount: result.entriesCount,
+        warnings: result.warnings || []
+      });
+    } else {
+      res.status(400).json({
+        error: {
+          message: 'Policy reload failed',
+          errors: result.errors || [],
+          warnings: result.warnings || []
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`Error triggering policy reload: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to trigger reload: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to rollback to previous policy configuration
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/rollback', async (req, res) => {
+  try {
+    const { version } = req.body;
+    const result = await policyManager.rollback(version || null);
+    
+    if (result.success) {
+      res.json({
+        message: 'Policies rolled back successfully',
+        version: result.version,
+        entriesCount: result.entriesCount
+      });
+    } else {
+      res.status(400).json({
+        error: {
+          message: 'Rollback failed',
+          reason: result.error
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`Error during rollback: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to rollback: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get current policy version
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/version', (req, res) => {
+  try {
+    const version = policyManager.getCurrentVersion();
+    
+    if (!version) {
+      return res.status(404).json({
+        error: { message: 'No version information available' }
+      });
+    }
+    
+    res.json(version);
+  } catch (error) {
+    console.error(`Error retrieving version: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve version: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get policy version history
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/history', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const history = policyManager.getVersionHistory(limit);
+    
+    res.json({
+      totalVersions: history.length,
+      versions: history
+    });
+  } catch (error) {
+    console.error(`Error retrieving history: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve history: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to validate policies without applying
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/policies/validate', (req, res) => {
+  try {
+    const { policies } = req.body;
+    
+    if (!policies || !Array.isArray(policies)) {
+      return res.status(400).json({
+        error: { message: 'policies array is required in request body' }
+      });
+    }
+    
+    const validation = policyManager.validatePolicies(policies);
+    
+    res.json({
+      valid: validation.valid,
+      errors: validation.errors || [],
+      warnings: validation.warnings || []
+    });
+  } catch (error) {
+    console.error(`Error validating policies: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to validate policies: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get all policies
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies', (req, res) => {
+  try {
+    const policies = policyManager.getAllPolicies();
+    const version = policyManager.getCurrentVersion();
+    
+    res.json({
+      version: version,
+      totalPolicies: policies.length,
+      policies: policies
+    });
+  } catch (error) {
+    console.error(`Error retrieving policies: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve policies: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get hot-reload statistics
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/policies/stats', (req, res) => {
+  try {
+    const stats = policyManager.getHotReloadStats();
+    
+    if (!stats) {
+      return res.status(404).json({
+        error: { message: 'Hot-reload not enabled' }
+      });
+    }
+    
+    res.json(stats);
+  } catch (error) {
+    console.error(`Error retrieving hot-reload stats: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve stats: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get all error messages
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/error-messages', (req, res) => {
+  try {
+    const messages = errorMessageManager.getAllMessages();
+    const stats = errorMessageManager.getStatistics();
+    
+    res.json({
+      messages: messages,
+      statistics: stats
+    });
+  } catch (error) {
+    console.error(`Error retrieving error messages: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve error messages: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to get a specific error message
+ * In production, protect this with admin authentication
+ */
+app.get('/admin/error-messages/:blockType', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
+    
+    if (!messageTemplate) {
+      return res.status(404).json({
+        error: { message: `No message template found for block type: ${blockType}` }
+      });
+    }
+    
+    res.json({
+      blockType: blockType,
+      messageTemplate: messageTemplate
+    });
+  } catch (error) {
+    console.error(`Error retrieving error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to retrieve error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to update an error message
+ * In production, protect this with admin authentication
+ */
+app.put('/admin/error-messages/:blockType', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const { messageTemplate } = req.body;
+    
+    if (!messageTemplate) {
+      return res.status(400).json({
+        error: { message: 'messageTemplate is required in request body' }
+      });
+    }
+    
+    const success = errorMessageManager.updateMessage(blockType, messageTemplate);
+    
+    if (success) {
+      res.json({
+        message: `Updated error message for block type: ${blockType}`,
+        blockType: blockType,
+        messageTemplate: messageTemplate
+      });
+    } else {
+      res.status(400).json({
+        error: { message: `Failed to update error message for block type: ${blockType}` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error updating error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to update error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to reset an error message to default
+ * In production, protect this with admin authentication
+ */
+app.post('/admin/error-messages/:blockType/reset', (req, res) => {
+  try {
+    const { blockType } = req.params;
+    const success = errorMessageManager.resetToDefault(blockType);
+    
+    if (success) {
+      const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
+      res.json({
+        message: `Reset error message to default for block type: ${blockType}`,
+        blockType: blockType,
+        messageTemplate: messageTemplate
+      });
+    } else {
+      res.status(404).json({
+        error: { message: `Unknown block type: ${blockType}` }
+      });
+    }
+  } catch (error) {
+    console.error(`Error resetting error message: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to reset error message: ${error.message}` }
+    });
+  }
+});
+
+/**
+ * Admin endpoint to update contact email
+ * In production, protect this with admin authentication
+ */
+app.put('/admin/error-messages/contact-email', (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        error: { message: 'email is required in request body' }
+      });
+    }
+    
+    errorMessageManager.setContactEmail(email);
+    
+    res.json({
+      message: 'Contact email updated successfully',
+      contactEmail: email
+    });
+  } catch (error) {
+    console.error(`Error updating contact email: ${error.message}`);
+    res.status(500).json({
+      error: { message: `Failed to update contact email: ${error.message}` }
+    });
+  }
+});
+
+/**
  * Health check endpoint
  */
 app.get('/health', (req, res) => {
@@ -556,7 +998,8 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }

@@ -11,5 +11,6 @@ export default {
   ],
   transform: {},
   moduleFileExtensions: ['js'],
-  verbose: true
+  verbose: true,
+  maxWorkers: 1 // Run tests sequentially to avoid race conditions with shared test_fixtures directory
 };

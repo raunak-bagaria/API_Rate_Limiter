@@ -59,17 +59,36 @@ describe('IPAllowBlockManager', () => {
 
   afterEach(() => {
     // Cleanup test files
-    if (fs.existsSync(testAllowlistFile)) {
-      fs.unlinkSync(testAllowlistFile);
-    }
-    if (fs.existsSync(testBlocklistFile)) {
-      fs.unlinkSync(testBlocklistFile);
+    try {
+      if (fs.existsSync(testAllowlistFile)) {
+        fs.unlinkSync(testAllowlistFile);
+      }
+      if (fs.existsSync(testBlocklistFile)) {
+        fs.unlinkSync(testBlocklistFile);
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+      console.warn(`Cleanup warning in ipAllowBlockManager.test.js afterEach: ${error.message}`);
     }
   });
 
   afterAll(() => {
-    if (fs.existsSync(fixturesDir)) {
-      fs.rmdirSync(fixturesDir, { recursive: true });
+    try {
+      if (fs.existsSync(fixturesDir)) {
+        // Remove all remaining files
+        const files = fs.readdirSync(fixturesDir);
+        for (const file of files) {
+          const filePath = path.join(fixturesDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+        // Remove directory
+        fs.rmdirSync(fixturesDir);
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+      console.warn(`Cleanup warning in ipAllowBlockManager.test.js afterAll: ${error.message}`);
     }
   });
 
@@ -88,6 +107,7 @@ describe('IPAllowBlockManager', () => {
 
     test('should create allowlist file if missing', () => {
       const newAllowlistFile = path.join(fixturesDir, 'new_allowlist.csv');
+      // eslint-disable-next-line no-unused-vars
       const manager = new IPAllowBlockManager('test_fixtures/new_allowlist.csv', 'test_fixtures/test_blocklist.csv');
       
       expect(fs.existsSync(newAllowlistFile)).toBe(true);
@@ -99,6 +119,7 @@ describe('IPAllowBlockManager', () => {
 
     test('should create blocklist file if missing', () => {
       const newBlocklistFile = path.join(fixturesDir, 'new_blocklist.csv');
+      // eslint-disable-next-line no-unused-vars
       const manager = new IPAllowBlockManager('test_fixtures/test_allowlist.csv', 'test_fixtures/new_blocklist.csv');
       
       expect(fs.existsSync(newBlocklistFile)).toBe(true);
