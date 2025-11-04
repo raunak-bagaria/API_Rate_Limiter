@@ -97,12 +97,6 @@ const policyManager = new RateLimitPolicyManager();
 
 console.info('Rate limit policy manager initialized with hot-reload enabled');
 
-// Import and initialize rate limit policy manager (for future use)
-import RateLimitPolicyManager from './rateLimitPolicyManager.js';
-const policyManager = new RateLimitPolicyManager();
-
-console.info('Rate limit policy manager initialized with hot-reload enabled');
-
 /**
  * Main data endpoint
  * Requires API key in X-API-Key header
