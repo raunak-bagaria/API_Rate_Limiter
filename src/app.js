@@ -23,6 +23,7 @@ import express from 'express';
 import ClientIdentifier, { ClientTier } from './clientIdentifier.js';
 import IPAllowBlockManager, { IPListAction } from './ipAllowBlockManager.js';
 import RateLimiter from './rateLimiter.js';
+import ErrorMessageManager from './errorMessageManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,10 +61,17 @@ app.use((req, res, next) => {
   
   if (ipCheck.action === IPListAction.BLOCK) {
     console.log(`🚫 Blocked request from ${clientIP}: ${ipCheck.reason}`);
+    
+    // Get custom error message
+    const errorMessage = errorMessageManager.getIPBlocklistMessage({
+      clientIP: clientIP,
+      reason: ipCheck.reason
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'Access denied',
-        reason: 'IP address is blocklisted',
+        message: errorMessage,
+        reason: ipCheck.reason,
         clientIP: clientIP
       }
     });
@@ -77,10 +85,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize unified client identifier, IP allow/block manager, rate limiter, and policy manager
+// Initialize unified client identifier, IP allow/block manager, rate limiter, error message manager, and policy manager
 const clientIdentifier = new ClientIdentifier();
 const ipAllowBlockManager = new IPAllowBlockManager();
 const rateLimiter = new RateLimiter();
+const errorMessageManager = new ErrorMessageManager();
+
+// Import and initialize rate limit policy manager (for future use)
+import RateLimitPolicyManager from './rateLimitPolicyManager.js';
+const policyManager = new RateLimitPolicyManager();
+
+console.info('Rate limit policy manager initialized with hot-reload enabled');
 
 // Import and initialize rate limit policy manager (for future use)
 import RateLimitPolicyManager from './rateLimitPolicyManager.js';
@@ -98,7 +113,19 @@ app.get('/data', (req, res) => {
 
   if (!identity.valid) {
     console.log(`Unauthorized request from ${req.ip}: ${identity.error.message}`);
-    return res.status(401).json(identity.toJSON());
+    
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -110,10 +137,21 @@ app.get('/data', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -145,7 +183,18 @@ app.get('/tier-info', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   // Check rate limits
@@ -157,10 +206,21 @@ app.get('/tier-info', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -203,7 +263,18 @@ app.get('/premium-only', (req, res) => {
   const identity = clientIdentifier.identifyClient(req);
 
   if (!identity.valid) {
-    return res.status(401).json(identity.toJSON());
+    // Get custom unauthorized error message
+    const errorMessage = errorMessageManager.getUnauthorizedMessage({
+      reason: identity.error.message
+    });
+    
+    return res.status(401).json({
+      ...identity.toJSON(),
+      error: {
+        ...identity.error,
+        message: errorMessage
+      }
+    });
   }
 
   if (!(identity.isTier(ClientTier.PREMIUM) || identity.isTier(ClientTier.ENTERPRISE))) {
@@ -211,9 +282,17 @@ app.get('/premium-only', (req, res) => {
       `Access denied to premium endpoint for ${identity.clientName} ` +
       `(tier: ${identity.classification})`
     );
+    
+    // Get custom tier-restricted error message
+    const errorMessage = errorMessageManager.getTierRestrictedMessage({
+      clientName: identity.clientName,
+      yourTier: identity.classification,
+      requiredTier: 'premium or higher'
+    });
+    
     return res.status(403).json({
       error: {
-        message: 'This endpoint requires premium or enterprise tier',
+        message: errorMessage,
         yourTier: identity.classification,
         requiredTier: 'premium or higher'
       }
@@ -229,10 +308,21 @@ app.get('/premium-only', (req, res) => {
       `${rateLimitResult.limitingWindow} window`
     );
     
+    // Get custom rate limit error message
+    const limitingWindowData = rateLimitResult.windows[rateLimitResult.limitingWindow];
+    const errorMessage = errorMessageManager.getRateLimitMessage({
+      clientName: identity.clientName,
+      tier: identity.classification,
+      limitingWindow: rateLimitResult.limitingWindow,
+      retryAfter: rateLimitResult.retryAfter,
+      currentCount: limitingWindowData?.currentCount || 0,
+      limit: limitingWindowData?.limit || 0
+    });
+    
     res.set('Retry-After', rateLimitResult.retryAfter.toString());
     return res.status(429).json({
       error: {
-        message: rateLimitResult.message,
+        message: errorMessage,
         limitingWindow: rateLimitResult.limitingWindow,
         retryAfter: rateLimitResult.retryAfter,
         windows: rateLimitResult.windows
@@ -259,14 +349,17 @@ app.post('/admin/reload', (req, res) => {
   try {
     clientIdentifier.reloadAll();
     ipAllowBlockManager.reloadAll();
+    errorMessageManager.reload();
     const stats = clientIdentifier.getStatistics();
     const ipListStats = ipAllowBlockManager.getStatistics();
+    const errorMessageStats = errorMessageManager.getStatistics();
 
     console.log('✓ Configurations reloaded successfully');
     res.json({
       message: 'Configurations reloaded successfully',
       statistics: stats,
-      ipLists: ipListStats
+      ipLists: ipListStats,
+      errorMessages: errorMessageStats
     });
   } catch (error) {
     console.error(`Error reloading: ${error.message}`);
@@ -770,7 +863,8 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }

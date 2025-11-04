@@ -45,16 +45,28 @@ test-key-standard,Test Client E,standard`;
 
   afterAll(() => {
     // Cleanup test files
-    if (fs.existsSync(testClientsFile)) {
-      fs.unlinkSync(testClientsFile);
-    }
-    if (fs.existsSync(fixturesDir)) {
-      // Remove all files in the directory first
-      const files = fs.readdirSync(fixturesDir);
-      for (const file of files) {
-        fs.unlinkSync(path.join(fixturesDir, file));
+    try {
+      if (fs.existsSync(testClientsFile)) {
+        fs.unlinkSync(testClientsFile);
       }
-      fs.rmdirSync(fixturesDir);
+      if (fs.existsSync(fixturesDir)) {
+        // Remove all files in the directory first
+        const files = fs.readdirSync(fixturesDir);
+        for (const file of files) {
+          const filePath = path.join(fixturesDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        }
+        // Only try to remove directory if it's empty
+        const remainingFiles = fs.readdirSync(fixturesDir);
+        if (remainingFiles.length === 0) {
+          fs.rmdirSync(fixturesDir);
+        }
+      }
+    } catch (error) {
+      // Ignore cleanup errors in tests
+      console.warn(`Cleanup warning in apiKeyManager.test.js: ${error.message}`);
     }
   });
 
