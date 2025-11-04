@@ -12,8 +12,8 @@
  * - Admin operations
  */
 
-// eslint-disable-next-line no-unused-vars
-import RateLimiter, { DEFAULT_RATE_LIMITS, TIME_WINDOWS } from '../src/rateLimiter.js';
+/* eslint-env jest, node */
+import RateLimiter, { DEFAULT_RATE_LIMITS } from '../src/rateLimiter.js';
 
 describe('RateLimiter', () => {
   let rateLimiter;

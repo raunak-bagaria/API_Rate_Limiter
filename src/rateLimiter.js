@@ -1,3 +1,5 @@
+/* eslint-env node */
+
 /**
  * RateLimiter: Enforces rate limits per client across multiple time windows
  * 
@@ -56,6 +58,8 @@ export const TIME_WINDOWS = {
   hour: 60 * 60 * 1000,
   day: 24 * 60 * 60 * 1000
 };
+
+/* eslint-env node */
 
 /**
  * Class to track requests for a specific client and time window

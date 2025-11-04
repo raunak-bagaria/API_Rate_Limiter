@@ -643,33 +643,7 @@ app.get('/admin/rate-limits/tier/:tier', (req, res) => {
     });
   }
 });
-
-/**
- * Admin endpoint to get rate limits for a tier
- * In production, protect this with admin authentication
- */
-app.get('/admin/rate-limits/tier/:tier', (req, res) => {
-  try {
-    const { tier } = req.params;
-    const limits = rateLimiter.getTierLimits(tier);
-    
-    if (!limits) {
-      return res.status(404).json({
-        error: { message: `Unknown tier: ${tier}` }
-      });
-    }
-    
-    res.json({
-      tier: tier,
-      limits: limits
-    });
-  } catch (error) {
-    console.error(`Error retrieving tier limits: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to retrieve tier limits: ${error.message}` }
-    });
-  }
-});
+ 
 
 /**
  * Admin endpoint to manually trigger policy reload
@@ -863,8 +837,7 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, _next) => {
+app.use((err, req, res) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }

@@ -5,7 +5,6 @@
  * Validates deterministic conflict resolution
  */
 
-import { jest } from '@jest/globals';
 import RateLimitPolicyManager from '../src/rateLimitPolicyManager.js';
 import fs from 'fs';
 import path from 'path';

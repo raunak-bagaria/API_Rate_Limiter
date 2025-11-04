@@ -263,8 +263,7 @@ class IPAllowBlockManager {
     }
 
     // Check CIDR ranges
-    // eslint-disable-next-line no-unused-vars
-    for (const [key, entry] of this.allowlist.entries()) {
+    for (const [, entry] of this.allowlist.entries()) {
       if (entry.type === 'cidr' && entry.cidrObj.contains(ipAddress)) {
         entry.requestCount += 1;
         this._saveAllowlist();
@@ -292,8 +291,7 @@ class IPAllowBlockManager {
     }
 
     // Check CIDR ranges
-    // eslint-disable-next-line no-unused-vars
-    for (const [key, entry] of this.blocklist.entries()) {
+    for (const [, entry] of this.blocklist.entries()) {
       if (entry.type === 'cidr' && entry.cidrObj.contains(ipAddress)) {
         entry.requestCount += 1;
         this._saveBlocklist();
@@ -476,8 +474,7 @@ class IPAllowBlockManager {
     };
 
     // Count allowlist statistics
-    // eslint-disable-next-line no-unused-vars
-    for (const [key, entry] of this.allowlist.entries()) {
+    for (const [, entry] of this.allowlist.entries()) {
       if (entry.type === 'ip') {
         allowlistStats.ipEntries += 1;
       } else {
@@ -487,8 +484,7 @@ class IPAllowBlockManager {
     }
 
     // Count blocklist statistics
-    // eslint-disable-next-line no-unused-vars
-    for (const [key, entry] of this.blocklist.entries()) {
+    for (const [, entry] of this.blocklist.entries()) {
       if (entry.type === 'ip') {
         blocklistStats.ipEntries += 1;
       } else {

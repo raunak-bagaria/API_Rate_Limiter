@@ -107,8 +107,7 @@ describe('IPAllowBlockManager', () => {
 
     test('should create allowlist file if missing', () => {
       const newAllowlistFile = path.join(fixturesDir, 'new_allowlist.csv');
-      // eslint-disable-next-line no-unused-vars
-      const manager = new IPAllowBlockManager('test_fixtures/new_allowlist.csv', 'test_fixtures/test_blocklist.csv');
+      new IPAllowBlockManager('test_fixtures/new_allowlist.csv', 'test_fixtures/test_blocklist.csv');
       
       expect(fs.existsSync(newAllowlistFile)).toBe(true);
       
@@ -119,8 +118,7 @@ describe('IPAllowBlockManager', () => {
 
     test('should create blocklist file if missing', () => {
       const newBlocklistFile = path.join(fixturesDir, 'new_blocklist.csv');
-      // eslint-disable-next-line no-unused-vars
-      const manager = new IPAllowBlockManager('test_fixtures/test_allowlist.csv', 'test_fixtures/new_blocklist.csv');
+      new IPAllowBlockManager('test_fixtures/test_allowlist.csv', 'test_fixtures/new_blocklist.csv');
       
       expect(fs.existsSync(newBlocklistFile)).toBe(true);
       

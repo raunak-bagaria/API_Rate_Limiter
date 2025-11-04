@@ -146,7 +146,7 @@ class RateLimitPolicyManager {
     
     for (let i = 0; i < config.length; i++) {
       const policy = config[i];
-      const policyErrors = [];
+      // const policyErrors = []; // not used - removed to satisfy linter
       
       // Check for duplicate IDs
       if (policy.id) {

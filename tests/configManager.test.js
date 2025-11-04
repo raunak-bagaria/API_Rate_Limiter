@@ -2,10 +2,11 @@
  * Tests for ConfigManager hot-reload functionality
  */
 
+/* eslint-env jest, node */
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { jest } from '@jest/globals';
 import ConfigManager from '../src/configManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
