@@ -10,8 +10,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+  "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
+  "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
     "lint": "eslint src/**/*.js tests/**/*.js",
     "lint:fix": "eslint src/**/*.js tests/**/*.js --fix"
   },
