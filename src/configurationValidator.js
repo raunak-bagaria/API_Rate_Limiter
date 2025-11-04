@@ -195,12 +195,10 @@ class ConfigurationValidator {
     try {
       // Step 1: Parse configuration if it's a string
       let parsedConfig;
-      let actualFormat = format;
 
       if (typeof configData === 'string') {
         const parseResult = this._parseConfigurationString(configData, format);
         parsedConfig = parseResult.parsed;
-        actualFormat = parseResult.format;
         
         if (parseResult.errors.length > 0) {
           validationResult.errors.push(...parseResult.errors);
@@ -472,7 +470,7 @@ class ConfigurationValidator {
         errors.push({
           type: 'PATTERN_ERROR',
           field: path,
-          message: `String does not match required pattern`,
+          message: 'String does not match required pattern',
           line: null,
           column: null,
           severity: 'error'
@@ -772,13 +770,8 @@ class ConfigurationValidator {
 
     if (!config.clients) return errors;
 
-    for (let i = 0; i < config.clients.length; i++) {
-      const client = config.clients[i];
-      const fieldPrefix = `clients[${i}]`;
-
-      // Additional API key validation beyond schema could go here
-      // (Weak key warnings are handled in _generateWarnings)
-    }
+    // Additional API key validation beyond schema could go here
+    // (Weak key warnings are handled in _generateWarnings)
 
     return errors;
   }
@@ -932,20 +925,18 @@ class ConfigurationValidator {
           const expiryDate = new Date(entry.expires_date);
 
           if (expiryDate <= addedDate) {
-            errors.push({
-              type: 'INVALID_DATE_RANGE',
-              field: `${fieldPrefix}.expires_date`,
-              message: `Expiry date must be after added date`,
-              line: null,
-              column: null,
-              severity: 'error'
-            });
-          }
+          errors.push({
+            type: 'INVALID_DATE_RANGE',
+            field: `${fieldPrefix}.expires_date`,
+            message: 'Expiry date must be after added date',
+            line: null,
+            column: null,
+            severity: 'error'
+          });
         }
       }
-    };
-
-    if (config.allowlist) {
+    }
+  };    if (config.allowlist) {
       validateDates(config.allowlist, 'allowlist');
     }
 
