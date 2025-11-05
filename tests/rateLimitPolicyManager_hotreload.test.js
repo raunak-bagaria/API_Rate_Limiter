@@ -2,11 +2,10 @@
  * Integration tests for RateLimitPolicyManager hot-reload functionality
  */
 
+/* eslint-env jest, node */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-// eslint-disable-next-line no-unused-vars
-import { jest } from '@jest/globals';
 import RateLimitPolicyManager from '../src/rateLimitPolicyManager.js';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -87,8 +87,7 @@ Test Client B,8.8.8.8,2025-10-15T11:00:00Z,2025-10-15T11:00:00Z,3`;
 
     test('should create learned IPs file if missing', () => {
       const newLearnedFile = path.join(fixturesDir, 'new_learned.csv');
-      // eslint-disable-next-line no-unused-vars
-      const manager = new IPManager('test_fixtures/test_cidr.csv', 'test_fixtures/new_learned.csv');
+      new IPManager('test_fixtures/test_cidr.csv', 'test_fixtures/new_learned.csv');
       
       expect(fs.existsSync(newLearnedFile)).toBe(true);
       

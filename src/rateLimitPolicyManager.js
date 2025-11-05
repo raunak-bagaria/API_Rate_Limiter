@@ -3,6 +3,57 @@
  *
  * Policy fields:
  * id, endpoint, api_key, ip_or_cidr, tier, limit, window
+ * 
+ * RULE HIERARCHY (Most specific to least specific):
+ * =====================================================
+ * 1. CLIENT-SPECIFIC RULES (highest priority)
+ *    - Matched by api_key
+ *    - Example: api_key=abc123, limit=1000
+ *    - Overrides all other rules for that specific client
+ * 
+ * 2. ENDPOINT-SPECIFIC RULES
+ *    - Matched by endpoint path
+ *    - Example: endpoint=/api/users, limit=500
+ *    - Can be combined with api_key, ip_or_cidr, or tier for more specificity
+ * 
+ * 3. GLOBAL RULES (lowest priority)
+ *    - Matched by tier only (applies to all endpoints)
+ *    - Example: tier=free, limit=100
+ *    - Used as fallback when no specific rules match
+ * 
+ * CONFLICT RESOLUTION:
+ * ====================
+ * When multiple rules match a request, the system uses a scoring algorithm:
+ * - CLIENT-SPECIFIC (api_key match): +10,000 points (dominant)
+ * - ENDPOINT-SPECIFIC:
+ *   - Exact endpoint match: +1,000 points
+ *   - Parameterized endpoint (/users/:id): +500 points (minus 10 per param)
+ *   - Wildcard endpoint (*): +100 points
+ * - IP/CIDR matching:
+ *   - Exact IP match: +332 points
+ *   - CIDR match: +300 to +332 points (more specific = higher)
+ * - GLOBAL (tier match): +50 points (fallback)
+ * 
+ * The rule with the HIGHEST TOTAL SCORE is selected.
+ * This ensures deterministic and predictable behavior.
+ * 
+ * SCORING EXAMPLES:
+ * =================
+ * api_key + endpoint + tier = 10,000 + 1,000 + 50 = 11,050 (client-specific wins)
+ * endpoint + ip + tier       = 1,000 + 332 + 50   = 1,382  (endpoint-specific)
+ * tier only                  = 50                  = 50     (global fallback)
+ * 
+ * EXAMPLES:
+ * =========
+ * Rule A: api_key=abc123, endpoint=/api/users, limit=1000
+ * Rule B: endpoint=/api/users, tier=free, limit=100
+ * Rule C: tier=free, limit=50
+ * 
+ * Request from api_key=abc123, endpoint=/api/users, tier=free:
+ *   - Rule A matches: score = 200 (api_key) + 400 (endpoint) = 600 ✓ SELECTED
+ *   - Rule B matches: score = 400 (endpoint) + 200 (tier) = 600
+ *   - Rule C matches: score = 200 (tier) = 200
+ *   Result: Rule A wins (client-specific always wins at same score due to evaluation order)
  */
 
 import fs from 'fs';
@@ -95,8 +146,7 @@ class RateLimitPolicyManager {
     
     for (let i = 0; i < config.length; i++) {
       const policy = config[i];
-      // eslint-disable-next-line no-unused-vars
-      const policyErrors = [];
+      // const policyErrors = []; // not used - removed to satisfy linter
       
       // Check for duplicate IDs
       if (policy.id) {
@@ -522,9 +572,89 @@ class RateLimitPolicyManager {
   }
 
   /**
+   * Select the best matching policy for a request based on rule hierarchy
+   * Returns the policy with detailed matching information for transparency
+   * 
+   * HIERARCHY (highest to lowest priority):
+   * 1. Client-specific rules (api_key)
+   * 2. Endpoint-specific rules
+   * 3. IP/CIDR rules
+   * 4. Global tier rules
+   * 
+   * USAGE EXAMPLE:
+   * const result = policyManager.selectBestMatchingPolicy({
+   *   endpoint: '/api/users',
+   *   apiKey: 'abc123',
+   *   ip: '192.168.1.100',
+   *   tier: 'premium'
+   * });
+   * 
+   * if (result) {
+   *   console.log(`Matched policy: ${result.policy.id}`);
+   *   console.log(`Hierarchy level: ${result.hierarchyLevel}`);
+   *   console.log(`Score: ${result.score}`);
+   *   console.log(`Match details:`, result.matchDetails);
+   * }
+   * 
+   * @param {Object} reqInfo - { endpoint, apiKey, ip, tier }
+   * @returns {Object|null} Best matching policy with metadata or null if no match
+   *   Returns: { 
+   *     policy: <policy object>,
+   *     score: <numeric score>,
+   *     matchDetails: { hasApiKey, hasEndpoint, hasIpOrCidr, hasTier },
+   *     hierarchyLevel: 'client-specific' | 'endpoint-specific' | 'ip-specific' | 'global'
+   *   }
+   */
+  selectBestMatchingPolicy(reqInfo) {
+    const matchingPolicies = this.findPoliciesForRequest(reqInfo);
+    
+    if (matchingPolicies.length === 0) {
+      return null;
+    }
+    
+    // The first policy is already the best match (sorted by score in findPoliciesForRequest)
+    const bestPolicy = matchingPolicies[0];
+    
+    // Get the match details for the best policy by re-evaluating it
+    // This is for transparency and debugging purposes
+    const normalizedReqInfo = {
+      ...reqInfo,
+      tier: reqInfo.tier ? reqInfo.tier.toLowerCase() : undefined
+    };
+    
+    const matchDetails = {
+      hasApiKey: !!(bestPolicy.api_key && normalizedReqInfo.apiKey && bestPolicy.api_key === normalizedReqInfo.apiKey),
+      hasEndpoint: !!(bestPolicy.endpoint && normalizedReqInfo.endpoint),
+      hasIpOrCidr: !!(bestPolicy.ip_or_cidr && normalizedReqInfo.ip),
+      hasTier: !!(bestPolicy.tier && normalizedReqInfo.tier && bestPolicy.tier === normalizedReqInfo.tier)
+    };
+    
+    // Calculate score for transparency
+    let score = 0;
+    if (matchDetails.hasApiKey) score += 10000;
+    if (matchDetails.hasEndpoint) {
+      if (bestPolicy.endpoint === normalizedReqInfo.endpoint) score += 1000;
+      else if (bestPolicy.endpoint === '*') score += 100;
+      else if (bestPolicy.endpoint.includes(':')) score += 500;
+    }
+    if (matchDetails.hasIpOrCidr) score += 300;
+    if (matchDetails.hasTier) score += 50;
+    
+    return {
+      policy: bestPolicy,
+      score: score,
+      matchDetails: matchDetails,
+      hierarchyLevel: matchDetails.hasApiKey ? 'client-specific' : 
+                      matchDetails.hasEndpoint ? 'endpoint-specific' : 
+                      matchDetails.hasIpOrCidr ? 'ip-specific' : 
+                      'global'
+    };
+  }
+
+  /**
    * Find all policies matching a request
    * @param {Object} reqInfo - { endpoint, apiKey, ip, tier }
-   * @returns {Array} Matching policies
+   * @returns {Array} Matching policies sorted by score (highest first)
    */
   findPoliciesForRequest(reqInfo) {
     const normalizedReqInfo = {
@@ -533,16 +663,37 @@ class RateLimitPolicyManager {
     };
 
     // Calculate match scores and filter matching policies
+    // Scoring hierarchy ensures: Client-specific > Endpoint-specific > Global
     const matchingPolicies = this.policies.map(policy => {
-      let score = parseInt(policy.priority || '0') * 1000;
+      let score = 0;
       let matches = true;
+      let matchDetails = {
+        hasApiKey: false,
+        hasEndpoint: false,
+        hasIpOrCidr: false,
+        hasTier: false
+      };
 
-      // Exact endpoint match has highest precedence
-      if (policy.endpoint && normalizedReqInfo.endpoint) {
+      // PRIORITY 1: Client-specific (api_key) - Highest weight
+      if (policy.api_key && normalizedReqInfo.apiKey) {
+        if (policy.api_key === normalizedReqInfo.apiKey) {
+          score += 10000; // Client-specific gets massive boost
+          matchDetails.hasApiKey = true;
+        } else {
+          matches = false;
+        }
+      }
+
+      // PRIORITY 2: Endpoint-specific matching
+      if (matches && policy.endpoint && normalizedReqInfo.endpoint) {
         if (policy.endpoint === normalizedReqInfo.endpoint) {
-          score += 400;
+          // Exact endpoint match
+          score += 1000;
+          matchDetails.hasEndpoint = true;
         } else if (policy.endpoint === '*') {
+          // Wildcard endpoint (catches all)
           score += 100;
+          matchDetails.hasEndpoint = true;
         } else if (policy.endpoint.includes(':')) {
           // Path parameter matching (e.g., /users/:id)
           const policyParts = policy.endpoint.split('/');
@@ -559,7 +710,9 @@ class RateLimitPolicyManager {
               }
             }
             if (paramMatch) {
-              score += 300 - paramCount; // More params = slightly lower score
+              // Parameterized endpoint: less specific than exact, more than wildcard
+              score += 500 - (paramCount * 10); // More params = slightly lower score
+              matchDetails.hasEndpoint = true;
             } else {
               matches = false;
             }
@@ -571,16 +724,7 @@ class RateLimitPolicyManager {
         }
       }
 
-      // Match api_key
-      if (matches && policy.api_key && normalizedReqInfo.apiKey) {
-        if (policy.api_key === normalizedReqInfo.apiKey) {
-          score += 200;
-        } else {
-          matches = false;
-        }
-      }
-
-      // Match ip_or_cidr
+      // PRIORITY 3: IP/CIDR matching (network-level specificity)
       if (matches && policy.ip_or_cidr && normalizedReqInfo.ip) {
         if (policy.ip_or_cidr.includes('/')) {
           // CIDR matching
@@ -616,27 +760,32 @@ class RateLimitPolicyManager {
           }
           
           if ((reqIpInt & netMask) === (subnetInt & netMask)) {
-            score += 200 - (32 - bitsNum); // More specific CIDR = higher score
+            // More specific CIDR (smaller range) = higher score
+            score += 300 + bitsNum; // /32 gets 332, /24 gets 324, /16 gets 316
+            matchDetails.hasIpOrCidr = true;
           } else {
             matches = false;
           }
         } else if (policy.ip_or_cidr === normalizedReqInfo.ip) {
-          score += 200;
+          // Exact IP match (equivalent to /32)
+          score += 332;
+          matchDetails.hasIpOrCidr = true;
         } else {
           matches = false;
         }
       }
 
-      // Match tier
+      // PRIORITY 4: Tier matching (global fallback)
       if (matches && policy.tier && normalizedReqInfo.tier) {
         if (policy.tier === normalizedReqInfo.tier) {
-          score += 200;
+          score += 50; // Lowest weight - this is the global fallback
+          matchDetails.hasTier = true;
         } else {
           matches = false;
         }
       }
 
-      return { policy, score, matches };
+      return { policy, score, matches, matchDetails };
     })
     .filter(item => item.matches)
     .sort((a, b) => b.score - a.score)

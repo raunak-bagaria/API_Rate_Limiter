@@ -1,3 +1,5 @@
+/* eslint-env node */
+ 
 /**
  * ConfigManager: Hot-reload configuration management with validation and rollback
  * 
@@ -20,6 +22,8 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
+
+/* eslint-env node */
 
 /**
  * Configuration version snapshot
@@ -213,8 +217,7 @@ class ConfigManager extends EventEmitter {
     this.watcher = fs.watchFile(this.configFile, {
       persistent: true,
       interval: this.watchInterval
-      // eslint-disable-next-line no-unused-vars
-    }, (curr, _prev) => {
+    }, (curr) => {
       // Check if file was actually modified
       if (curr.mtimeMs > this.lastModifiedTime) {
         console.info(`Config file changed detected (mtime: ${new Date(curr.mtimeMs).toISOString()})`);

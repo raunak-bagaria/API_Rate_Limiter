@@ -637,33 +637,7 @@ app.get('/admin/rate-limits/tier/:tier', (req, res) => {
     });
   }
 });
-
-/**
- * Admin endpoint to get rate limits for a tier
- * In production, protect this with admin authentication
- */
-app.get('/admin/rate-limits/tier/:tier', (req, res) => {
-  try {
-    const { tier } = req.params;
-    const limits = rateLimiter.getTierLimits(tier);
-    
-    if (!limits) {
-      return res.status(404).json({
-        error: { message: `Unknown tier: ${tier}` }
-      });
-    }
-    
-    res.json({
-      tier: tier,
-      limits: limits
-    });
-  } catch (error) {
-    console.error(`Error retrieving tier limits: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to retrieve tier limits: ${error.message}` }
-    });
-  }
-});
+ 
 
 /**
  * Admin endpoint to manually trigger policy reload
@@ -847,147 +821,6 @@ app.get('/admin/policies/stats', (req, res) => {
 });
 
 /**
- * Admin endpoint to get all error messages
- * In production, protect this with admin authentication
- */
-app.get('/admin/error-messages', (req, res) => {
-  try {
-    const messages = errorMessageManager.getAllMessages();
-    const stats = errorMessageManager.getStatistics();
-    
-    res.json({
-      messages: messages,
-      statistics: stats
-    });
-  } catch (error) {
-    console.error(`Error retrieving error messages: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to retrieve error messages: ${error.message}` }
-    });
-  }
-});
-
-/**
- * Admin endpoint to get a specific error message
- * In production, protect this with admin authentication
- */
-app.get('/admin/error-messages/:blockType', (req, res) => {
-  try {
-    const { blockType } = req.params;
-    const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
-    
-    if (!messageTemplate) {
-      return res.status(404).json({
-        error: { message: `No message template found for block type: ${blockType}` }
-      });
-    }
-    
-    res.json({
-      blockType: blockType,
-      messageTemplate: messageTemplate
-    });
-  } catch (error) {
-    console.error(`Error retrieving error message: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to retrieve error message: ${error.message}` }
-    });
-  }
-});
-
-/**
- * Admin endpoint to update an error message
- * In production, protect this with admin authentication
- */
-app.put('/admin/error-messages/:blockType', (req, res) => {
-  try {
-    const { blockType } = req.params;
-    const { messageTemplate } = req.body;
-    
-    if (!messageTemplate) {
-      return res.status(400).json({
-        error: { message: 'messageTemplate is required in request body' }
-      });
-    }
-    
-    const success = errorMessageManager.updateMessage(blockType, messageTemplate);
-    
-    if (success) {
-      res.json({
-        message: `Updated error message for block type: ${blockType}`,
-        blockType: blockType,
-        messageTemplate: messageTemplate
-      });
-    } else {
-      res.status(400).json({
-        error: { message: `Failed to update error message for block type: ${blockType}` }
-      });
-    }
-  } catch (error) {
-    console.error(`Error updating error message: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to update error message: ${error.message}` }
-    });
-  }
-});
-
-/**
- * Admin endpoint to reset an error message to default
- * In production, protect this with admin authentication
- */
-app.post('/admin/error-messages/:blockType/reset', (req, res) => {
-  try {
-    const { blockType } = req.params;
-    const success = errorMessageManager.resetToDefault(blockType);
-    
-    if (success) {
-      const messageTemplate = errorMessageManager.getMessageTemplate(blockType);
-      res.json({
-        message: `Reset error message to default for block type: ${blockType}`,
-        blockType: blockType,
-        messageTemplate: messageTemplate
-      });
-    } else {
-      res.status(404).json({
-        error: { message: `Unknown block type: ${blockType}` }
-      });
-    }
-  } catch (error) {
-    console.error(`Error resetting error message: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to reset error message: ${error.message}` }
-    });
-  }
-});
-
-/**
- * Admin endpoint to update contact email
- * In production, protect this with admin authentication
- */
-app.put('/admin/error-messages/contact-email', (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        error: { message: 'email is required in request body' }
-      });
-    }
-    
-    errorMessageManager.setContactEmail(email);
-    
-    res.json({
-      message: 'Contact email updated successfully',
-      contactEmail: email
-    });
-  } catch (error) {
-    console.error(`Error updating contact email: ${error.message}`);
-    res.status(500).json({
-      error: { message: `Failed to update contact email: ${error.message}` }
-    });
-  }
-});
-
-/**
  * Health check endpoint
  */
 app.get('/health', (req, res) => {
@@ -998,8 +831,7 @@ app.get('/health', (req, res) => {
 });
 
 // Error handling middleware
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, _next) => {
+app.use((err, req, res) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }
