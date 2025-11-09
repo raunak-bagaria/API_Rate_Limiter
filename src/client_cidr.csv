@@ -1,7 +1,7 @@
 client_name,cidr_range,request_count
-Client A,192.168.1.0/24,245
 Client A,10.0.0.0/16,89
-Client B,203.0.113.0/24,456
+Client A,192.168.1.0/24,250
 Client B,2001:db8::/32,123
-Client C,198.51.100.0/24,1829
+Client B,203.0.113.0/24,456
 Client C,172.16.0.0/12,567
+Client C,198.51.100.0/24,1829

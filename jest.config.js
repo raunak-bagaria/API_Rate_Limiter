@@ -12,5 +12,8 @@ export default {
   transform: {},
   moduleFileExtensions: ['js'],
   verbose: true,
-  maxWorkers: 1 // Run tests sequentially to avoid race conditions with shared test_fixtures directory
+  maxWorkers: 1, // Run tests sequentially to avoid race conditions with shared test_fixtures directory
+  forceExit: true, // Force Jest to exit after all tests complete
+  testTimeout: 10000, // Set a reasonable timeout
+  setupFiles: ['<rootDir>/tests/setup.js'] // Setup test environment
 };
