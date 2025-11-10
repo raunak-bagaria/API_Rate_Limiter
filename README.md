@@ -36,7 +36,8 @@ This repository contains the source code and documentation for the API Rate Limi
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [List your prerequisites here]
+- Node.js (v18 or higher)
+- npm or yarn package manager
 
 ### Installation
 1. Clone the repository
@@ -47,12 +48,21 @@ This repository contains the source code and documentation for the API Rate Limi
 
 2. Install dependencies
    ```bash
-   # Add your installation commands here
+   npm install
    ```
 
 3. Run the application
    ```bash
-   # Add your run commands here
+   # Development mode (with auto-restart)
+   npm run dev
+   
+   # Production mode
+   npm start
+   ```
+
+4. Run tests
+   ```bash
+   npm test
    ```
 
 ## 📁 Project Structure
@@ -60,11 +70,99 @@ This repository contains the source code and documentation for the API Rate Limi
 ```
 PESU_RR_CSE_H_P73_API_Rate_Limiter_Codevengers/
 ├── src/                 # Source code
+│   ├── app.js          # Main application entry point
+│   ├── clientIdentifier.js    # Client identification logic
+│   ├── apiKeyManager.js       # API key validation
+│   ├── ipManager.js           # IP learning and CIDR management
+│   ├── ipAllowBlockManager.js # IP allowlist/blocklist management
+│   ├── errorMessageManager.js # Custom error message management
+│   ├── clients.csv            # API key client configurations
+│   ├── client_cidr.csv        # Preconfigured CIDR ranges
+│   ├── client_ips.csv         # Learned IP addresses
+│   ├── ip_allowlist.csv       # Allowlisted IPs and CIDR ranges
+│   ├── ip_blocklist.csv       # Blocklisted IPs and CIDR ranges
+│   └── error_messages.csv     # Custom error message templates
 ├── docs/               # Documentation
+│   ├── ERROR_MESSAGES.md      # Custom error messages documentation
+│   └── ...
 ├── tests/              # Test files
+│   ├── apiKeyManager.test.js
+│   ├── ipManager.test.js
+│   ├── ipAllowBlockManager.test.js
+│   ├── errorMessageManager.test.js
+│   └── ...
 ├── .github/            # GitHub workflows and templates
 ├── README.md          # This file
 └── ...
+```
+
+## 🔒 Security Features
+
+### Custom Error Messages
+
+The API Rate Limiter supports configurable custom error messages for blocked and rate-limited responses:
+
+#### Features
+- **Configurable per Block Type**: Different messages for rate limits, IP blocklists, unauthorized access, and tier restrictions
+- **Template Variables**: Dynamic variable substitution (e.g., `{{clientName}}`, `{{retryAfter}}`, `{{contactEmail}}`)
+- **Default Messages**: Fallback to sensible defaults if custom messages are not configured
+- **Hot Reload**: Update messages without restarting the service
+- **Admin API**: Manage messages through REST endpoints
+
+For detailed documentation, see [Custom Error Messages Documentation](docs/ERROR_MESSAGES.md).
+
+### IP Allowlists and Blocklists
+
+The API Rate Limiter includes comprehensive IP allowlist and blocklist functionality:
+
+#### Features
+- **Allowlisted IPs**: IPs that are processed according to normal rules
+- **Blocklisted IPs**: IPs that are immediately rejected with HTTP 403
+- **CIDR Range Support**: Both individual IPs and CIDR ranges are supported
+- **IPv4 and IPv6**: Full support for both IP versions
+- **Priority Handling**: Blocklist takes precedence over allowlist
+- **Request Tracking**: Automatic counting of requests from listed IPs
+
+#### Configuration Files
+
+**IP Allowlist (`src/ip_allowlist.csv`)**:
+```csv
+ip_or_cidr,description,added_date,request_count
+192.168.100.0/24,Trusted internal network,2025-10-18T10:00:00Z,0
+10.0.0.50,Admin workstation,2025-10-18T10:00:00Z,0
+```
+
+**IP Blocklist (`src/ip_blocklist.csv`)**:
+```csv
+ip_or_cidr,description,added_date,request_count
+192.168.1.100,Compromised host,2025-10-18T10:00:00Z,0
+10.0.0.0/8,Internal network - blocked for testing,2025-10-18T10:00:00Z,0
+```
+
+#### Admin API Endpoints
+
+- `POST /admin/allowlist/add` - Add IP/CIDR to allowlist
+- `POST /admin/blocklist/add` - Add IP/CIDR to blocklist
+- `DELETE /admin/allowlist/remove` - Remove IP/CIDR from allowlist
+- `DELETE /admin/blocklist/remove` - Remove IP/CIDR from blocklist
+- `GET /admin/stats` - Get statistics including IP list data
+- `POST /admin/reload` - Reload all configurations including IP lists
+
+#### Example Usage
+
+**Adding to blocklist:**
+```bash
+curl -X POST http://localhost:3000/admin/blocklist/add \
+  -H "Content-Type: application/json" \
+  -d '{"ip_or_cidr": "203.0.113.0/24", "description": "Malicious IP range"}'
+```
+
+**Testing blocked IP:**
+```bash
+curl -H "X-API-Key: 12345-ABCDE" \
+     -H "X-Forwarded-For: 192.168.1.100" \
+     http://localhost:3000/data
+# Returns HTTP 403 Forbidden
 ```
 
 ## 🛠️ Development Guidelines

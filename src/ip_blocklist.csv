@@ -1,0 +1,6 @@
+ ip_or_cidr,description,added_date,request_count
+192.168.1.100,Compromised host,2025-10-18T10:00:00Z,0
+10.0.0.0/8,Internal network - blocked for testing,2025-10-18T10:00:00Z,0
+185.220.101.0/24,Known malicious IP range,2025-10-18T10:00:00Z,0
+198.51.100.42,Suspicious activity detected,2025-10-18T10:00:00Z,0
+2001:db8:bad::/48,Malicious IPv6 range,2025-10-18T10:00:00Z,0
