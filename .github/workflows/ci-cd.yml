@@ -172,8 +172,8 @@ jobs:
           name: lint-report
           path: lint-report.json
           retention-days: 30
-
-security:
+          
+  security:
     runs-on: ubuntu-latest
     needs: lint
     steps:
