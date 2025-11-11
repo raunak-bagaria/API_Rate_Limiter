@@ -40,6 +40,16 @@ coverage/
 test-results/
 .cache/
 
+# Lint reports
+lint-report.json
+lint-report.html
+
+# Security reports
+security-audit.json
+security-audit.txt
+security-report.md
+eslint-security.json
+
 # Build outputs
 dist/
 build/
