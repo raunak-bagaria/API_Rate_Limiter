@@ -3,7 +3,7 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import fs from 'fs';
 import path from 'path';
 import { setTimeout as delay } from 'timers/promises';
-import AdminBlockManager from '../src/adminBlockManager.js';
+import AdminBlockManager from '../../src/adminBlockManager.js';
 
 const fixturesDir = path.join(process.cwd(), 'src', 'test_fixtures');
 const blocksFile = path.join(fixturesDir, 'admin_blocks_test.csv');

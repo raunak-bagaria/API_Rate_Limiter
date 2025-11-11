@@ -10,7 +10,7 @@
  * 6. Edge cases and performance
  */
 
-import ConfigurationValidator from '../src/configurationValidator.js';
+import ConfigurationValidator from '../../src/configurationValidator.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -370,7 +370,8 @@ describe('ConfigurationValidator', () => {
       const result = await validator.validateConfiguration('clientConfig', invalidConfig);
       
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.type === 'DUPLICATE_CLIENT_NAME')).toBe(true);
+      const duplicateError = result.errors.find(e => e.type === 'DUPLICATE_CLIENT_NAME');
+      expect(duplicateError.field).toMatch(/clients\[\d+\]\.client_name/);
     });
 
     test('should warn about weak API keys', async () => {

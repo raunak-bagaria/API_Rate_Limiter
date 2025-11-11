@@ -9,7 +9,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import RateLimitPolicyManager from '../src/rateLimitPolicyManager.js';
+import RateLimitPolicyManager from '../../src/rateLimitPolicyManager.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
