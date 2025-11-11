@@ -156,8 +156,34 @@ jobs:
           name: node-modules
           path: node_modules
 
+      - name: Ensure ESLint and dev dependencies are available
+        run: |
+          if [ ! -x node_modules/.bin/eslint ]; then
+            echo "ESLint binary not found in node_modules; running npm ci to install dev dependencies";
+            npm ci;
+          else
+            echo "ESLint binary found; proceeding";
+          fi
+
       - name: Run ESLint
-        run: npm run lint:report
+        run: |
+          echo "Running ESLint to generate lint-report.json"
+          npm run lint:report || true
+          
+          # Retry once with a fresh install if report is missing
+          if [ ! -f lint-report.json ]; then
+            echo "lint-report.json missing after first run; retrying after npm ci"
+            npm ci
+            npx eslint src/**/*.js tests/**/*.js --format json --output-file lint-report.json || true
+          fi
+
+      - name: Verify lint report presence
+        run: |
+          if [ ! -f lint-report.json ]; then
+            echo "Missing lint report after retry. Debug info:";
+            node -v || true; npm -v || true; npx eslint --version || true;
+            echo "Failing lint stage due to missing lint-report.json"; exit 1;
+          fi
 
       - name: Enforce lint quality gate (0 errors)
         run: |
@@ -166,7 +192,8 @@ jobs:
           WARNINGS=$(grep -o '\"warningCount\":[0-9]*' lint-report.json | head -1 | grep -o '[0-9]*' || echo 0)
           echo "Lint Errors: $ERRORS"; echo "Lint Warnings: $WARNINGS"
           if [ "$ERRORS" -gt 0 ]; then echo "Lint quality gate FAILED (errors > 0)"; exit 1; fi
-          echo "Lint quality gate PASSED (0 errors)"
+          if [ "$WARNINGS" -ge 10 ]; then echo "Lint quality gate FAILED (warnings >= 10)"; exit 1; fi
+          echo "Lint quality gate PASSED (0 errors, warnings < 10)"
 
       - name: Upload lint artifact
         if: always()
