@@ -8,7 +8,7 @@
  * - Edge cases (empty keys, null values, etc.)
  */
 
-import APIKeyManager from '../src/apiKeyManager.js';
+import APIKeyManager from '../../src/apiKeyManager.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,7 +18,7 @@ const __dirname = path.dirname(__filename);
 
 describe('APIKeyManager', () => {
   let keyManager;
-  const fixturesDir = path.join(__dirname, '..', 'src', 'test_fixtures');
+  const fixturesDir = path.join(process.cwd(), 'src', 'test_fixtures');
   const testClientsFile = path.join(fixturesDir, 'test_clients.csv');
 
   beforeAll(() => {

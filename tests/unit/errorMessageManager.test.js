@@ -10,7 +10,7 @@
  * - Admin operations
  */
 
-import ErrorMessageManager, { BlockType } from '../src/errorMessageManager.js';
+import ErrorMessageManager, { BlockType } from '../../src/errorMessageManager.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,7 +21,7 @@ const __dirname = path.dirname(__filename);
 describe('ErrorMessageManager', () => {
   let errorMessageManager;
   const testMessagesFile = 'test_error_messages.csv';
-  const testMessagesPath = path.join(__dirname, '..', 'src', testMessagesFile);
+  const testMessagesPath = path.join(process.cwd(), 'src', testMessagesFile);
 
   beforeEach(() => {
     // Clean up test file if it exists

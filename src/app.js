@@ -830,34 +830,37 @@ app.get('/health', (req, res) => {
   });
 });
 
+// 404 handler - Must come BEFORE error handling middleware
+app.use((req, res, next) => {
+  res.status(404).json({
+    error: { message: 'Endpoint not found' }
+  });
+});
+
 // Error handling middleware
-app.use((err, req, res) => {
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
   console.error(`Unhandled error: ${err.message}`);
   res.status(500).json({
     error: { message: 'Internal server error' }
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    error: { message: 'Endpoint not found' }
+// Start server only if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    const stats = clientIdentifier.getStatistics();
+    const ipListStats = ipAllowBlockManager.getStatistics();
+    console.log('='.repeat(60));
+    console.log('API Rate Limiter Starting');
+    console.log(`API Key Clients: ${stats.apiKeyClients}`);
+    console.log(`CIDR Ranges: ${stats.cidr.totalRanges} (${stats.cidr.totalRequests} requests)`);
+    console.log(`Learned IPs: ${stats.learnedIPs.totalIPs} (${stats.learnedIPs.totalRequests} requests)`);
+    console.log(`IP Allowlist: ${ipListStats.allowlist.totalEntries} entries (${ipListStats.allowlist.totalRequests} requests)`);
+    console.log(`IP Blocklist: ${ipListStats.blocklist.totalEntries} entries (${ipListStats.blocklist.totalRequests} requests)`);
+    console.log(`Server running on port ${PORT}`);
+    console.log('='.repeat(60));
   });
-});
-
-// Start server
-app.listen(PORT, () => {
-  const stats = clientIdentifier.getStatistics();
-  const ipListStats = ipAllowBlockManager.getStatistics();
-  console.log('='.repeat(60));
-  console.log('API Rate Limiter Starting');
-  console.log(`API Key Clients: ${stats.apiKeyClients}`);
-  console.log(`CIDR Ranges: ${stats.cidr.totalRanges} (${stats.cidr.totalRequests} requests)`);
-  console.log(`Learned IPs: ${stats.learnedIPs.totalIPs} (${stats.learnedIPs.totalRequests} requests)`);
-  console.log(`IP Allowlist: ${ipListStats.allowlist.totalEntries} entries (${ipListStats.allowlist.totalRequests} requests)`);
-  console.log(`IP Blocklist: ${ipListStats.blocklist.totalEntries} entries (${ipListStats.blocklist.totalRequests} requests)`);
-  console.log(`Server running on port ${PORT}`);
-  console.log('='.repeat(60));
-});
+}
 
 export default app;

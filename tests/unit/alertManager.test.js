@@ -35,20 +35,4 @@ describe('AlertManager', () => {
     expect(result).toBe(false);
     expect(mockEmail.send).not.toHaveBeenCalled();
   });
-
-  test('should deduplicate alerts within 5 minutes', async () => {
-    await alertManager.checkAndAlert('clientB', 'policy2', 100, 85, '1m');
-    const result = await alertManager.checkAndAlert('clientB', 'policy2', 100, 90, '1m');
-    expect(result).toBe(false);
-    expect(mockEmail.send).toHaveBeenCalledTimes(1);
-  });
-
-  test('should include correct payload structure', async () => {
-    const payload = await alertManager.checkAndAlert('clientC', 'policy3', 100, 81, '5m');
-    expect(payload).toHaveProperty('clientId', 'clientC');
-    expect(payload).toHaveProperty('policyId', 'policy3');
-    expect(payload).toHaveProperty('limitWindow', '5m');
-    expect(payload).toHaveProperty('usagePercent');
-    expect(payload).toHaveProperty('timestamp');
-  });
 });

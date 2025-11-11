@@ -13,7 +13,7 @@
  */
 
 /* eslint-env jest, node */
-import RateLimiter, { DEFAULT_RATE_LIMITS } from '../src/rateLimiter.js';
+import RateLimiter, { DEFAULT_RATE_LIMITS } from '../../src/rateLimiter.js';
 
 describe('RateLimiter', () => {
   let rateLimiter;

@@ -12,7 +12,7 @@
  * - Request count tracking
  */
 
-import IPAllowBlockManager, { IPListAction } from '../src/ipAllowBlockManager.js';
+import IPAllowBlockManager, { IPListAction } from '../../src/ipAllowBlockManager.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 
 describe('IPAllowBlockManager', () => {
   let ipAllowBlockManager;
-  const fixturesDir = path.join(__dirname, '..', 'src', 'test_fixtures');
+  const fixturesDir = path.join(process.cwd(), 'src', 'test_fixtures');
   const testAllowlistFile = path.join(fixturesDir, 'test_allowlist.csv');
   const testBlocklistFile = path.join(fixturesDir, 'test_blocklist.csv');
 

@@ -2,14 +2,13 @@ name: CI-CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, system-integration]
   pull_request:
     branches: [main, develop]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,55 +21,332 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -f package.json ]; then
+          npm ci
+          echo "Dependencies installed successfully"
+
+      - name: Validate project structure
+        run: |
+          for item in package.json src tests; do
+            if [ ! -e "$item" ]; then
+              echo "Missing required item: $item";
+              exit 1;
+            fi;
+          done
+          echo "Structure OK"
+
+      - name: Upload node_modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-modules
+          path: node_modules
+          retention-days: 1
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: node-modules
+          path: node_modules
+
+      - name: Run full test suite
+        run: |
+          echo "Running all test suites (unit, integration, system)..."
+          npm run test:ci
+          echo "All test suites completed"
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/junit.xml
+          retention-days: 30
+
+      - name: Upload raw coverage (for coverage stage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-raw
+          path: coverage/
+          retention-days: 2
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-raw
+          path: coverage
+
+      - name: Verify global coverage threshold (>=75%)
+        run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "Missing coverage summary"; exit 1; fi
+          node -e '
+            const fs = require("fs");
+            const summary = JSON.parse(fs.readFileSync("coverage/coverage-summary.json", "utf8"));
+            const t = summary.total || {};
+            const metrics = {
+              lines: t.lines?.pct ?? 0,
+              statements: t.statements?.pct ?? 0,
+              functions: t.functions?.pct ?? 0,
+              branches: t.branches?.pct ?? 0,
+            };
+            console.log("Coverage Metrics (global):");
+            console.log(`  Lines: ${metrics.lines}%`);
+            console.log(`  Statements: ${metrics.statements}%`);
+            console.log(`  Functions: ${metrics.functions}%`);
+            console.log(`  Branches: ${metrics.branches}%`);
+            const pass = Object.values(metrics).every(v => Number(v) >= 75);
+            if (!pass) {
+              console.error("Coverage quality gate FAILED (global < 75%)");
+              process.exit(1);
+            }
+            console.log("Coverage quality gate PASSED (global >= 75%)");
+          '
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-html
+          path: coverage/lcov-report/
+          retention-days: 30
+
+      - name: Upload coverage data files
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-data
+          path: |
+            coverage/lcov.info
+            coverage/coverage-summary.json
+            coverage/coverage-final.json
+          retention-days: 30
+
+  lint:
+    runs-on: ubuntu-latest
+    needs: coverage
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: node-modules
+          path: node_modules
+
+      - name: Ensure ESLint and dev dependencies are available
+        run: |
+          if [ ! -x node_modules/.bin/eslint ]; then
+            echo "ESLint binary not found in node_modules; running npm ci to install dev dependencies";
+            npm ci;
+          else
+            echo "ESLint binary found; proceeding";
+          fi
+
+      - name: Run ESLint
+        run: |
+          echo "Running ESLint to generate lint-report.json"
+          npm run lint:report || true
+          
+          # Retry once with a fresh install if report is missing
+          if [ ! -f lint-report.json ]; then
+            echo "lint-report.json missing after first run; retrying after npm ci"
             npm ci
-          else
-            echo "No package.json found, skipping npm install"
+            npx eslint src/**/*.js tests/**/*.js --format json --output-file lint-report.json || true
           fi
 
-      - name: Run linting
+      - name: Verify lint report presence
         run: |
-          if [ -f package.json ] && npm list --depth=0 | grep -q eslint; then
-            npm run lint
-          else
-            echo "No linting configured, skipping..."
+          if [ ! -f lint-report.json ]; then
+            echo "Missing lint report after retry. Debug info:";
+            node -v || true; npm -v || true; npx eslint --version || true;
+            echo "Failing lint stage due to missing lint-report.json"; exit 1;
           fi
 
-      - name: Run tests
+      - name: Enforce lint quality gate (0 errors)
         run: |
-          if [ -f package.json ] && npm list --depth=0 | grep -q jest; then
-            npm test
-          else
-            echo "No tests configured, skipping..."
-          fi
+          if [ ! -f lint-report.json ]; then echo "Missing lint report"; exit 1; fi
+          ERRORS=$(grep -o '\"errorCount\":[0-9]*' lint-report.json | head -1 | grep -o '[0-9]*' || echo 0)
+          WARNINGS=$(grep -o '\"warningCount\":[0-9]*' lint-report.json | head -1 | grep -o '[0-9]*' || echo 0)
+          echo "Lint Errors: $ERRORS"; echo "Lint Warnings: $WARNINGS"
+          if [ "$ERRORS" -gt 0 ]; then echo "Lint quality gate FAILED (errors > 0)"; exit 1; fi
+          if [ "$WARNINGS" -ge 10 ]; then echo "Lint quality gate FAILED (warnings >= 10)"; exit 1; fi
+          echo "Lint quality gate PASSED (0 errors, warnings < 10)"
 
-      - name: Build application
-        run: |
-          if [ -f package.json ]; then
-            npm run build --if-present
-          else
-            echo "No build script found, skipping..."
-          fi
+      - name: Upload lint artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: lint-report.json
+          retention-days: 30
+          
+  security:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Security audit
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Download dependencies
+        uses: actions/download-artifact@v4
+        with:
+          name: node-modules
+          path: node_modules
+
+      - name: Dependency vulnerability scan
         run: |
-          if [ -f package.json ]; then
-            npm audit --audit-level=high
-          else
-            echo "No package.json found, skipping security audit"
-          fi
+          npm audit --json > security-audit.json || true
+          npm audit --audit-level=moderate > security-audit.txt || true
+          CRITICAL=$(grep -o '"severity":"critical"' security-audit.json | wc -l || echo 0)
+          HIGH=$(grep -o '"severity":"high"' security-audit.json | wc -l || echo 0)
+          MODERATE=$(grep -o '"severity":"moderate"' security-audit.json | wc -l || echo 0)
+          echo "Critical: $CRITICAL | High: $HIGH | Moderate: $MODERATE"
+          if [ "$CRITICAL" -gt 0 ]; then echo "Critical vulnerabilities found -> FAIL"; exit 1; fi
+          echo "No critical vulnerabilities"
+
+      - name: Static security lint (ESLint security rules)
+        run: |
+          npx eslint src/**/*.js tests/**/*.js --format json --output-file eslint-security.json || true
+          ERRORS=$(grep -o '"errorCount":[0-9]*' eslint-security.json | head -1 | grep -o '[0-9]*' || echo 0)
+          echo "Security rule errors: $ERRORS"
+
+      - name: Assemble security report
+        run: |
+          echo "# Security Scan Report" > security-report.md
+          echo "Date: $(date -u)" >> security-report.md
+          echo "Commit: ${{ github.sha }}" >> security-report.md
+          echo "" >> security-report.md
+          echo "## Dependency Audit" >> security-report.md
+          if [ -f security-audit.txt ]; then echo '```' >> security-report.md; cat security-audit.txt >> security-report.md; echo '```' >> security-report.md; fi
+          echo "" >> security-report.md
+          echo "## Static Analysis" >> security-report.md
+          ERRORS=$(grep -o '\"errorCount\":[0-9]*' eslint-security.json | head -1 | grep -o '[0-9]*' || echo 0)
+          echo "Errors: $ERRORS" >> security-report.md
+          echo "" >> security-report.md
+          echo "## Summary" >> security-report.md
+          CRITICAL=$(grep -o '\"severity\":\"critical\"' security-audit.json | wc -l || echo 0)
+          if [ "$CRITICAL" -gt 0 ]; then echo "Status: FAILED (critical vulnerabilities)" >> security-report.md; else echo "Status: PASSED (no critical vulnerabilities)" >> security-report.md; fi
+          cat security-report.md
+
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            security-audit.json
+            security-audit.txt
+            eslint-security.json
+            security-report.md
+          retention-days: 30
 
   deploy:
-    needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
+    needs: security
     steps:
-      - name: Deploy to staging
-        run: echo "Deploying to staging environment..."
-        
-      - name: Run integration tests
-        run: echo "Running integration tests..."
-        
-      - name: Deploy to production
-        run: echo "Deploying to production environment..."
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare staging directories
+        run: |
+          mkdir -p deploy_bundle/src \
+                   deploy_bundle/reports/coverage/html \
+                   deploy_bundle/reports/coverage/data \
+                   deploy_bundle/reports/tests \
+                   deploy_bundle/reports/lint \
+                   deploy_bundle/reports/security \
+                   deploy_bundle/manifests \
+                   deploy_bundle/config \
+                   deploy_bundle/docs
+
+      - name: Copy source and essential files
+        run: |
+          cp -R src deploy_bundle/
+          [ -f README.md ] && cp README.md deploy_bundle/ || true
+          [ -f package.json ] && cp package.json deploy_bundle/manifests/ || true
+          [ -f package-lock.json ] && cp package-lock.json deploy_bundle/manifests/ || true
+          [ -f eslint.config.js ] && cp eslint.config.js deploy_bundle/config/ || true
+          [ -f jest.config.js ] && cp jest.config.js deploy_bundle/config/ || true
+          [ -d docs ] && cp -R docs/. deploy_bundle/docs/ || true
+
+      - name: Download coverage HTML report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-html
+          path: deploy_bundle/reports/coverage/html
+
+      - name: Download coverage data files
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-data
+          path: deploy_bundle/reports/coverage/data
+
+      - name: Download JUnit test results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: deploy_bundle/reports/tests
+
+      - name: Download lint report
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-report
+          path: deploy_bundle/reports/lint
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: security-reports
+          path: deploy_bundle/reports/security
+
+      - name: Compute package name
+        id: pkg
+        run: |
+          VERSION=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));process.stdout.write(p.version||'0.0.0');")
+          NAME=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));process.stdout.write((p.name||'project').replace(/[^a-zA-Z0-9_-]/g,'-'));")
+          DATE=$(date -u +%F)
+          ZIP_NAME="${NAME}-v${VERSION}-${DATE}.zip"
+          echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "Computed zip name: ${ZIP_NAME}"
+
+      - name: Create zip artifact
+        run: |
+          ZIP_NAME='${{ steps.pkg.outputs.zip_name }}'
+          echo "Zipping deploy_bundle into $ZIP_NAME"
+          zip -r "$ZIP_NAME" deploy_bundle >/dev/null
+          ls -lh "$ZIP_NAME"
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: ${{ steps.pkg.outputs.zip_name }}
+          retention-days: 30

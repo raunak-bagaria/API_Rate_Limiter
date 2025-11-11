@@ -10,7 +10,7 @@
  * - Header formatting and logging
  */
 
-import RateLimitHeaderManager from '../src/rateLimitHeaderManager.js';
+import RateLimitHeaderManager from '../../src/rateLimitHeaderManager.js';
 
 describe('RateLimitHeaderManager', () => {
   let manager;
@@ -454,7 +454,7 @@ describe('RateLimitHeaderManager', () => {
         limit: 100,
         remaining: 50,
         resetTime: farFutureTime,
-        windowSeconds: 86400
+        windowSeconds: 60
       };
 
       manager.applyHeaders(mockRes, rateLimitInfo);
