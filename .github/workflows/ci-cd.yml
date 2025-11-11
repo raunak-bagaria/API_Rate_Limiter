@@ -94,29 +94,32 @@ jobs:
           name: coverage-raw
           path: coverage
 
-      - name: Verify coverage threshold (>=75%)
+      - name: Verify global coverage threshold (>=75%)
         run: |
           if [ ! -f coverage/coverage-summary.json ]; then
             echo "Missing coverage summary"; exit 1; fi
-          SUMMARY=coverage/coverage-summary.json
-          LINES=$(grep -o '"lines":{"total":[0-9]*,"covered":[0-9]*,"skipped":[0-9]*,"pct":[0-9.]*' "$SUMMARY" | grep -o 'pct":[0-9.]*' | cut -d':' -f2)
-          STATEMENTS=$(grep -o '"statements":{"total":[0-9]*,"covered":[0-9]*,"skipped":[0-9]*,"pct":[0-9.]*' "$SUMMARY" | grep -o 'pct":[0-9.]*' | cut -d':' -f2)
-          FUNCTIONS=$(grep -o '"functions":{"total":[0-9]*,"covered":[0-9]*,"skipped":[0-9]*,"pct":[0-9.]*' "$SUMMARY" | grep -o 'pct":[0-9.]*' | cut -d':' -f2)
-          BRANCHES=$(grep -o '"branches":{"total":[0-9]*,"covered":[0-9]*,"skipped":[0-9]*,"pct":[0-9.]*' "$SUMMARY" | grep -o 'pct":[0-9.]*' | cut -d':' -f2)
-          echo "Coverage Metrics:";
-          echo "  Lines: $LINES%";
-          echo "  Statements: $STATEMENTS%";
-          echo "  Functions: $FUNCTIONS%";
-          echo "  Branches: $BRANCHES%";
-          FAIL=0
-          for metric in $LINES $STATEMENTS $FUNCTIONS $BRANCHES; do
-            VALUE=$(printf '%s' "$metric" | cut -d'.' -f1)
-            if [ "$VALUE" -lt 75 ]; then FAIL=1; fi
-          done
-          if [ $FAIL -eq 1 ]; then
-            echo "Coverage quality gate FAILED (<75%)"; exit 1;
-          fi
-          echo "Coverage quality gate PASSED (>=75%)"
+          node -e '
+            const fs = require("fs");
+            const summary = JSON.parse(fs.readFileSync("coverage/coverage-summary.json", "utf8"));
+            const t = summary.total || {};
+            const metrics = {
+              lines: t.lines?.pct ?? 0,
+              statements: t.statements?.pct ?? 0,
+              functions: t.functions?.pct ?? 0,
+              branches: t.branches?.pct ?? 0,
+            };
+            console.log("Coverage Metrics (global):");
+            console.log(`  Lines: ${metrics.lines}%`);
+            console.log(`  Statements: ${metrics.statements}%`);
+            console.log(`  Functions: ${metrics.functions}%`);
+            console.log(`  Branches: ${metrics.branches}%`);
+            const pass = Object.values(metrics).every(v => Number(v) >= 75);
+            if (!pass) {
+              console.error("Coverage quality gate FAILED (global < 75%)");
+              process.exit(1);
+            }
+            console.log("Coverage quality gate PASSED (global >= 75%)");
+          '
 
       - name: Upload coverage HTML report
         uses: actions/upload-artifact@v4
