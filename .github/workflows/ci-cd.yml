@@ -267,3 +267,87 @@ jobs:
             eslint-security.json
             security-report.md
           retention-days: 30
+
+  deploy:
+    name: Create Deployment Artifact
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare staging directories
+        run: |
+          mkdir -p deploy_bundle/src \
+                   deploy_bundle/reports/coverage/html \
+                   deploy_bundle/reports/coverage/data \
+                   deploy_bundle/reports/tests \
+                   deploy_bundle/reports/lint \
+                   deploy_bundle/reports/security \
+                   deploy_bundle/manifests \
+                   deploy_bundle/config \
+                   deploy_bundle/docs
+
+      - name: Copy source and essential files
+        run: |
+          cp -R src deploy_bundle/
+          [ -f README.md ] && cp README.md deploy_bundle/ || true
+          [ -f package.json ] && cp package.json deploy_bundle/manifests/ || true
+          [ -f package-lock.json ] && cp package-lock.json deploy_bundle/manifests/ || true
+          [ -f eslint.config.js ] && cp eslint.config.js deploy_bundle/config/ || true
+          [ -f jest.config.js ] && cp jest.config.js deploy_bundle/config/ || true
+          [ -d docs ] && cp -R docs/. deploy_bundle/docs/ || true
+
+      - name: Download coverage HTML report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-html
+          path: deploy_bundle/reports/coverage/html
+
+      - name: Download coverage data files
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-data
+          path: deploy_bundle/reports/coverage/data
+
+      - name: Download JUnit test results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: deploy_bundle/reports/tests
+
+      - name: Download lint report
+        uses: actions/download-artifact@v4
+        with:
+          name: lint-report
+          path: deploy_bundle/reports/lint
+
+      - name: Download security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: security-reports
+          path: deploy_bundle/reports/security
+
+      - name: Compute package name
+        id: pkg
+        run: |
+          VERSION=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));process.stdout.write(p.version||'0.0.0');")
+          NAME=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));process.stdout.write((p.name||'project').replace(/[^a-zA-Z0-9_-]/g,'-'));")
+          DATE=$(date -u +%F)
+          ZIP_NAME="${NAME}-v${VERSION}-${DATE}.zip"
+          echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "Computed zip name: ${ZIP_NAME}"
+
+      - name: Create zip artifact
+        run: |
+          ZIP_NAME='${{ steps.pkg.outputs.zip_name }}'
+          echo "Zipping deploy_bundle into $ZIP_NAME"
+          zip -r "$ZIP_NAME" deploy_bundle >/dev/null
+          ls -lh "$ZIP_NAME"
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: ${{ steps.pkg.outputs.zip_name }}
+          retention-days: 30
