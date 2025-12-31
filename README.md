@@ -28,12 +28,8 @@ This repository contains the source code and documentation for the API Rate Limi
 - [@Abhigna-D](https://github.com/Abhigna-D)
 - [@MDAzeemDhalayat](https://github.com/MDAzeemDhalayat)
 
-## 👨‍⚖️ Faculty Supervisor
 
-- *No valid faculty GitHub username found*
-
-
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js (v18 or higher)
@@ -189,13 +185,7 @@ Follow conventional commit format:
 4. Request review from team members
 5. Merge after approval
 
-## 📚 Documentation
-
-- [API Documentation](docs/api.md)
-- [User Guide](docs/user-guide.md)
-- [Developer Guide](docs/developer-guide.md)
-
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run tests
@@ -205,11 +195,12 @@ npm test
 npm run test:coverage
 ```
 
-## 📄 License
+## License
 
 This project is developed for educational purposes as part of the PES University UE23CS341A curriculum.
 
 ---
+This project was originally developed in a private university GitHub organization with full PR-based workflow and code reviews. The repository was later mirrored here with permission.
 
 **Course:** UE23CS341A  
 **Institution:** PES University  
